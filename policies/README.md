@@ -16,15 +16,23 @@ Without Lambda permissions, CDK deployments fail with:
 AccessDenied: User is not authorized to perform: lambda:CreateFunction
 ```
 
-## Policy File
+## Policy Files
 
+### Primary Policy (Try This First)
+**File:** `lambda-deployment-permissions-no-iam.json`
+
+This version **excludes IAM permissions** since One.Cloud restricts IAM actions for customer roles. The CDK CloudFormation execution role (created during bootstrap) should handle IAM role creation automatically.
+
+### Full Policy (If Needed)
 **File:** `lambda-deployment-permissions.json`
+
+Includes IAM permissions - only use if the no-IAM version fails.
 
 **Account ID:** 640664844884  
 **Region:** eu-west-1  
 **Stack Prefix:** TestStackStack / teststackstack
 
-## Permissions Included
+## Permissions Included (No-IAM Version)
 
 ### 1. Lambda Function Management
 - Create, update, delete Lambda functions
@@ -36,21 +44,25 @@ AccessDenied: User is not authorized to perform: lambda:CreateFunction
 - Get and publish Lambda layers (CDK uses AWS CLI layer for BucketDeployment)
 - **Scope:** All layers in the account/region
 
-### 3. IAM Role Management
-- Create and manage Lambda execution roles
-- Pass roles to Lambda service
-- Attach policies to roles
-- **Scope:** Only roles with prefix `TestStackStack-*` or `teststackstack-*`
-
-### 4. CloudWatch Logs
+### 3. CloudWatch Logs
 - Create log groups and streams for Lambda function logs
 - Write logs (Lambda needs this for debugging)
 - **Scope:** Only log groups for TestStackStack Lambda functions
 
-### 5. S3 Access
+### 4. S3 Access
 - Read/write access to the test stack S3 buckets
 - Access to CDK staging bucket (where assets are stored)
 - **Scope:** Only buckets with prefix `teststackstack-*` and CDK toolkit buckets
+
+### Note on IAM Permissions
+
+**IAM role creation is NOT included** in the no-IAM policy because One.Cloud restricts IAM actions for customer roles.
+
+**Why this should still work:**
+- CDK bootstrap (Task 8) created a `CloudFormationExecutionRole`
+- This role has permission to create IAM roles on your behalf
+- CloudFormation will use this execution role to create Lambda execution roles
+- Your user role only needs Lambda/Logs/S3 permissions
 
 ## How to Apply in One.Cloud
 
