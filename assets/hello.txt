@@ -1,1 +1,1 @@
-Hello from AWS CDK! This is a test file deployed via CDK.
+Hello from AWS CDK! This file was deployed via Lambda BucketDeployment construct. Test deployment at 2026-04-13.
