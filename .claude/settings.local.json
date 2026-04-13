@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(aws sts get-caller-identity:*)",
+      "Bash(aws configure get region:*)",
+      "Bash(npm install:*)",
+      "Bash(npm config:*)",
+      "Bash(curl -I https://registry.npmjs.org/aws-cdk)"
+    ]
+  }
+}

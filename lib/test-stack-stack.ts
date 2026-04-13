@@ -7,6 +7,14 @@ export class TestStackStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
+    // Add stack-level tags that may be required by SCP
+    cdk.Tags.of(this).add('Environment', 'test');
+    cdk.Tags.of(this).add('Project', 'CDK-Testing');
+    cdk.Tags.of(this).add('ManagedBy', 'CDK');
+    cdk.Tags.of(this).add('Owner', 'a2i5giv');
+    cdk.Tags.of(this).add('Purpose', 'CDK-Bootstrap-Test');
+    cdk.Tags.of(this).add('CostCenter', 'Development');
+
     // Create S3 bucket with auto-delete enabled for easy cleanup
     const bucket = new s3.Bucket(this, 'TestBucket', {
       removalPolicy: cdk.RemovalPolicy.DESTROY,

@@ -1,0 +1,16 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowAssumeFilePublishingRole",
+      "Effect": "Allow",
+      "Action": "sts:AssumeRole",
+      "Resource": [
+        "arn:aws:iam::640664844884:role/cdk-hnb659fds-file-publishing-role-640664844884-eu-west-1",
+        "arn:aws:iam::640664844884:role/cdk-hnb659fds-image-publishing-role-640664844884-eu-west-1",
+        "arn:aws:iam::640664844884:role/cdk-hnb659fds-deploy-role-640664844884-eu-west-1",
+        "arn:aws:iam::640664844884:role/cdk-hnb659fds-lookup-role-640664844884-eu-west-1"
+      ]
+    }
+  ]
+}
