@@ -13,6 +13,8 @@ export interface YouTrackStackProps extends cdk.StackProps {
 }
 
 export class YouTrackStack extends cdk.Stack {
+  public readonly instance: ec2.Instance;
+
   constructor(scope: Construct, id: string, props?: YouTrackStackProps) {
     super(scope, id, props);
 
@@ -138,7 +140,7 @@ export class YouTrackStack extends cdk.Stack {
     // Using AMI from image factory (One.Cloud requirement)
     // IF20-amzn2-GROUP-PROD-20260403220337-AMI (Amazon Linux 2, x86_64)
     // t3.medium (4GB RAM) required for YouTrack 2026.1 - t3.small caused OOM errors
-    const instance = new ec2.Instance(this, 'YouTrackInstance', {
+    this.instance = new ec2.Instance(this, 'YouTrackInstance', {
       instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MEDIUM),
       machineImage: ec2.MachineImage.genericLinux({
         'eu-west-1': 'ami-0b434d403262ef6c7',
@@ -181,28 +183,28 @@ export class YouTrackStack extends cdk.Stack {
     // Device name /dev/sdf will be used in UserData for mounting
     new ec2.CfnVolumeAttachment(this, 'YouTrackDataVolumeAttachment', {
       volumeId: dataVolume.volumeId,
-      instanceId: instance.instanceId,
+      instanceId: this.instance.instanceId,
       device: '/dev/sdf',
     });
 
     // Outputs
     new cdk.CfnOutput(this, 'InstanceId', {
-      value: instance.instanceId,
+      value: this.instance.instanceId,
       description: 'EC2 Instance ID',
     });
 
     new cdk.CfnOutput(this, 'PrivateIp', {
-      value: instance.instancePrivateIp,
+      value: this.instance.instancePrivateIp,
       description: 'EC2 Instance Private IP',
     });
 
     new cdk.CfnOutput(this, 'AccessUrl', {
-      value: `http://${instance.instancePrivateIp}:8080`,
+      value: `http://${this.instance.instancePrivateIp}:8080`,
       description: 'YouTrack Access URL',
     });
 
     new cdk.CfnOutput(this, 'SsmConnect', {
-      value: `aws ssm start-session --target ${instance.instanceId} --region ${this.region}`,
+      value: `aws ssm start-session --target ${this.instance.instanceId} --region ${this.region}`,
       description: 'SSM Session Manager connect command',
     });
 

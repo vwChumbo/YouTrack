@@ -6,6 +6,7 @@ import * as codebuild from 'aws-cdk-lib/aws-codebuild';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import { SharedVpc } from '@vwg-community/vws-cdk';
 import { YouTrackStack } from './youtrack-stack';
+import { AutomationStack } from './automation-stack';
 
 export class PipelineStack extends cdk.Stack {
   public readonly repository: codecommit.Repository;
@@ -83,8 +84,14 @@ class ApplicationStage extends cdk.Stage {
     super(scope, id, props);
 
     // Instantiate YouTrackStack
-    new YouTrackStack(this, 'YouTrackStack', {
+    const youTrackStack = new YouTrackStack(this, 'YouTrackStack', {
       env: props?.env,
+    });
+
+    // Instantiate AutomationStack with instance ID from YouTrackStack
+    new AutomationStack(this, 'AutomationStack', {
+      env: props?.env,
+      instanceId: youTrackStack.instance.instanceId,
     });
   }
 }
