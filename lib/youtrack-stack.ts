@@ -100,8 +100,9 @@ export class YouTrackStack extends cdk.Stack {
     // Create EC2 instance
     // Using AMI from image factory (One.Cloud requirement)
     // IF20-amzn2-GROUP-PROD-20260403220337-AMI (Amazon Linux 2, x86_64)
+    // t3.medium (4GB RAM) required for YouTrack 2026.1 - t3.small caused OOM errors
     const instance = new ec2.Instance(this, 'YouTrackInstance', {
-      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.SMALL),
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MEDIUM),
       machineImage: ec2.MachineImage.genericLinux({
         'eu-west-1': 'ami-0b434d403262ef6c7',
       }),
