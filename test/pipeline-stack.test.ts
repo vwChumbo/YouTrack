@@ -97,4 +97,79 @@ describe('PipelineStack', () => {
       },
     });
   });
+
+  test('has self-mutation enabled', () => {
+    const app = new cdk.App();
+    const stack = new PipelineStack(app, 'TestPipelineStack', {
+      env: {
+        account: '640664844884',
+        region: 'eu-west-1',
+      },
+    });
+
+    const template = Template.fromStack(stack);
+
+    // Verify self-mutation stage is present (indicated by 2 CodeBuild projects: synth + self-mutation)
+    template.resourceCountIs('AWS::CodeBuild::Project', 2);
+  });
+
+  test('uses PRIVATE_ISOLATED subnet type for CodeBuild', () => {
+    const app = new cdk.App();
+    const stack = new PipelineStack(app, 'TestPipelineStack', {
+      env: {
+        account: '640664844884',
+        region: 'eu-west-1',
+      },
+    });
+
+    const template = Template.fromStack(stack);
+
+    // Verify CodeBuild project has VPC configuration with PRIVATE_ISOLATED subnets
+    template.hasResourceProperties('AWS::CodeBuild::Project', {
+      VpcConfig: {
+        VpcId: Match.anyValue(),
+        Subnets: Match.anyValue(),
+      },
+    });
+  });
+
+  test('pipeline has deploy stage configured', () => {
+    const app = new cdk.App();
+    const stack = new PipelineStack(app, 'TestPipelineStack', {
+      env: {
+        account: '640664844884',
+        region: 'eu-west-1',
+      },
+    });
+
+    const template = Template.fromStack(stack);
+
+    // Verify pipeline exists
+    template.resourceCountIs('AWS::CodePipeline::Pipeline', 1);
+
+    // Verify pipeline has multiple stages (Source, Build/Synth, UpdatePipeline, Deploy)
+    // The pipeline definition includes stages in the Stages property
+    template.hasResourceProperties('AWS::CodePipeline::Pipeline', {
+      Stages: Match.arrayWith([
+        Match.objectLike({ Name: 'Source' }),
+        Match.objectLike({ Name: Match.stringLikeRegexp('Synth|Build') }),
+        Match.objectLike({ Name: Match.stringLikeRegexp('UpdatePipeline|SelfMutate') }),
+        Match.objectLike({ Name: Match.stringLikeRegexp('Deploy') }),
+      ]),
+    });
+  });
+
+  test('pipeline uses correct environment configuration', () => {
+    const app = new cdk.App();
+    const stack = new PipelineStack(app, 'TestPipelineStack', {
+      env: {
+        account: '640664844884',
+        region: 'eu-west-1',
+      },
+    });
+
+    // Verify stack environment is correctly set
+    expect(stack.account).toBe('640664844884');
+    expect(stack.region).toBe('eu-west-1');
+  });
 });

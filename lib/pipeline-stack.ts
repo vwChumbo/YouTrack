@@ -5,6 +5,7 @@ import * as pipelines from 'aws-cdk-lib/pipelines';
 import * as codebuild from 'aws-cdk-lib/aws-codebuild';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import { SharedVpc } from '@vwg-community/vws-cdk';
+import { YouTrackStack } from './youtrack-stack';
 
 export class PipelineStack extends cdk.Stack {
   public readonly repository: codecommit.Repository;
@@ -49,6 +50,11 @@ export class PipelineStack extends cdk.Stack {
       selfMutation: true,
     });
 
+    // Add deploy stage to pipeline
+    pipeline.addStage(new ApplicationStage(this, 'Deploy', {
+      env: props?.env,
+    }));
+
     // Stack outputs
     new cdk.CfnOutput(this, 'RepositoryCloneUrlHttp', {
       value: this.repository.repositoryCloneUrlHttp,
@@ -65,6 +71,20 @@ export class PipelineStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'RepositoryName', {
       value: this.repository.repositoryName,
       description: 'CodeCommit repository name',
+    });
+  }
+}
+
+/**
+ * Application Stage that instantiates application stacks for deployment
+ */
+class ApplicationStage extends cdk.Stage {
+  constructor(scope: Construct, id: string, props?: cdk.StageProps) {
+    super(scope, id, props);
+
+    // Instantiate YouTrackStack
+    new YouTrackStack(this, 'YouTrackStack', {
+      env: props?.env,
     });
   }
 }
