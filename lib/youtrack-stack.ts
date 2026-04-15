@@ -53,6 +53,17 @@ export class YouTrackStack extends cdk.Stack {
       ],
     });
 
+    // Add ECR permissions for pulling Docker images
+    instanceRole.addToPolicy(new iam.PolicyStatement({
+      actions: [
+        'ecr:GetAuthorizationToken',
+        'ecr:BatchCheckLayerAvailability',
+        'ecr:GetDownloadUrlForLayer',
+        'ecr:BatchGetImage',
+      ],
+      resources: ['*'], // GetAuthorizationToken requires '*'
+    }));
+
     // UserData script to install Docker and run YouTrack
     const userData = ec2.UserData.forLinux();
     userData.addCommands(
@@ -68,12 +79,19 @@ export class YouTrackStack extends cdk.Stack {
       '',
       '# Create data directory on root volume',
       'mkdir -p /var/youtrack-data',
+      'chown -R 13001:13001 /var/youtrack-data',
+      'chmod -R 755 /var/youtrack-data',
       '',
-      '# Run YouTrack container',
+      '# Login to ECR',
+      'aws ecr get-login-password --region eu-west-1 | \\',
+      '  docker login --username AWS --password-stdin \\',
+      '  640664844884.dkr.ecr.eu-west-1.amazonaws.com',
+      '',
+      '# Run YouTrack container from ECR',
       'docker run -d --name youtrack --restart=always \\',
       '  -p 8080:8080 \\',
       '  -v /var/youtrack-data:/opt/youtrack/data \\',
-      '  jetbrains/youtrack:2024.3',
+      '  640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:2026.1.12458',
       '',
       '# Signal completion',
       'echo "YouTrack deployment complete at $(date)" > /var/log/youtrack-setup.log'

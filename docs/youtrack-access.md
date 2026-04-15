@@ -1,8 +1,18 @@
 # YouTrack Access
 
+**YouTrack Version:** 2026.1.12458  
+**Image Location:** 640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:2026.1.12458
+
 **Instance ID:** i-0f9fe3a681f4c1d5a  
 **Private IP:** 192.168.146.15  
 **Access URL:** http://192.168.146.15:8080
+
+To get current details:
+```bash
+aws cloudformation describe-stacks --stack-name YouTrackStack --region eu-west-1 --query 'Stacks[0].Outputs'
+```
+
+**Status:** ✅ Running and accessible
 
 ## Connecting via SSM
 
@@ -115,3 +125,64 @@ sudo yum install -y docker
 sudo systemctl start docker
 sudo systemctl enable docker
 ```
+
+## Upgrading YouTrack
+
+### Option 1: Using the Update Script
+
+```bash
+# On your local machine with Docker running
+./scripts/update-youtrack-image.sh 2026.2.XXXXX
+
+# Then update lib/youtrack-stack.ts with new version
+# And redeploy: cdk deploy
+```
+
+### Option 2: Manual Upgrade
+
+**Push new image to ECR:**
+```bash
+# On your local machine
+docker pull jetbrains/youtrack:2026.2.XXXXX
+aws ecr get-login-password --region eu-west-1 | \
+  docker login --username AWS --password-stdin \
+  640664844884.dkr.ecr.eu-west-1.amazonaws.com
+docker tag jetbrains/youtrack:2026.2.XXXXX \
+  640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:2026.2.XXXXX
+docker push 640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:2026.2.XXXXX
+```
+
+**Update running instance without redeployment:**
+```bash
+# Connect via SSM
+aws ssm start-session --target <instance-id> --region eu-west-1
+
+# Stop and remove old container
+docker stop youtrack
+docker rm youtrack
+
+# Login to ECR
+aws ecr get-login-password --region eu-west-1 | \
+  docker login --username AWS --password-stdin \
+  640664844884.dkr.ecr.eu-west-1.amazonaws.com
+
+# Pull new image
+docker pull 640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:2026.2.XXXXX
+
+# Start new container
+docker run -d --name youtrack --restart=always \
+  -p 8080:8080 \
+  -v /var/youtrack-data:/opt/youtrack/data \
+  640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:2026.2.XXXXX
+```
+
+**Note:** Data persists in `/var/youtrack-data` across container updates.
+
+## Current Configuration
+
+- **Image Registry:** AWS ECR (640664844884.dkr.ecr.eu-west-1.amazonaws.com)
+- **Repository:** youtrack
+- **Current Version:** 2026.1.12458
+- **Data Location:** /var/youtrack-data on 30GB root volume
+- **Network:** Private IP only, port 8080
+- **Access Method:** SSM Session Manager (no SSH)
