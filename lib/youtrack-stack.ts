@@ -4,9 +4,20 @@ import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { SharedVpc } from '@vwg-community/vws-cdk';
 
+export interface YouTrackStackProps extends cdk.StackProps {
+  /**
+   * Availability Zone for EC2 instance and EBS volume
+   * @default 'eu-west-1a'
+   */
+  availabilityZone?: string;
+}
+
 export class YouTrackStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props?: YouTrackStackProps) {
     super(scope, id, props);
+
+    // Get availability zone from props or use default
+    const availabilityZone = props?.availabilityZone || 'eu-west-1a';
 
     // Add compliance tags
     cdk.Tags.of(this).add('Environment', 'production');
@@ -77,8 +88,34 @@ export class YouTrackStack extends cdk.Stack {
       'systemctl enable docker',
       'usermod -aG docker ec2-user',
       '',
-      '# Create data directory on root volume',
+      '# Configure EBS data volume',
+      '# Wait for device to be available',
+      'for i in {1..30}; do',
+      '  if [ -e /dev/sdf ]; then break; fi',
+      '  echo "Waiting for /dev/sdf to be available..."',
+      '  sleep 1',
+      'done',
+      '',
+      '# Check if volume is already formatted (has a filesystem)',
+      'if ! blkid /dev/sdf; then',
+      '  echo "Formatting /dev/sdf as ext4"',
+      '  mkfs -t ext4 /dev/sdf',
+      'else',
+      '  echo "/dev/sdf already formatted, skipping format"',
+      'fi',
+      '',
+      '# Create mount point',
       'mkdir -p /var/youtrack-data',
+      '',
+      '# Add to fstab if not already present',
+      'if ! grep -q "/dev/sdf" /etc/fstab; then',
+      '  echo "/dev/sdf /var/youtrack-data ext4 defaults,nofail 0 2" >> /etc/fstab',
+      'fi',
+      '',
+      '# Mount the volume',
+      'mount -a',
+      '',
+      '# Set ownership and permissions for YouTrack container (UID 13001)',
       'chown -R 13001:13001 /var/youtrack-data',
       'chmod -R 755 /var/youtrack-data',
       '',
@@ -109,10 +146,12 @@ export class YouTrackStack extends cdk.Stack {
       vpc: sharedVpc.vpc,
       vpcSubnets: sharedVpc.vpc.selectSubnets({
         subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
+        availabilityZones: [availabilityZone],
       }),
       securityGroup: securityGroup,
       role: instanceRole,
       userData: userData,
+      availabilityZone: availabilityZone,
       blockDevices: [
         {
           deviceName: '/dev/xvda',
@@ -122,6 +161,28 @@ export class YouTrackStack extends cdk.Stack {
           }),
         },
       ],
+    });
+
+    // Create separate EBS volume for YouTrack data
+    // This allows clean backups via DLM snapshots and data persistence across instance replacements
+    const dataVolume = new ec2.Volume(this, 'YouTrackDataVolume', {
+      availabilityZone: availabilityZone,
+      size: cdk.Size.gibibytes(50),
+      volumeType: ec2.EbsDeviceVolumeType.GP3,
+      encrypted: true,
+      removalPolicy: cdk.RemovalPolicy.SNAPSHOT,
+    });
+
+    // Tag the data volume for DLM backup policy
+    cdk.Tags.of(dataVolume).add('Name', 'youtrack-data');
+    cdk.Tags.of(dataVolume).add('Backup', 'weekly-dlm');
+
+    // Attach data volume to EC2 instance
+    // Device name /dev/sdf will be used in UserData for mounting
+    new ec2.CfnVolumeAttachment(this, 'YouTrackDataVolumeAttachment', {
+      volumeId: dataVolume.volumeId,
+      instanceId: instance.instanceId,
+      device: '/dev/sdf',
     });
 
     // Outputs
