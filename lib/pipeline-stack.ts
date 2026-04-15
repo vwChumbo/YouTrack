@@ -49,6 +49,16 @@ export class PipelineStack extends cdk.Stack {
         },
       }),
       selfMutation: true,
+      // Configure self-mutation CodeBuild project to use VPC (One.Cloud SCP requirement)
+      selfMutationCodeBuildDefaults: {
+        vpc: sharedVpc.vpc,
+        subnetSelection: {
+          subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
+        },
+        buildEnvironment: {
+          buildImage: codebuild.LinuxBuildImage.STANDARD_7_0,
+        },
+      },
     });
 
     // Add deploy stage to pipeline
