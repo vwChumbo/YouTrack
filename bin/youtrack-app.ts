@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib';
-import { YouTrackStack } from '../lib/youtrack-stack';
+import { PipelineStack } from '../lib/pipeline-stack';
 
 const app = new cdk.App();
-new YouTrackStack(app, 'YouTrackStack', {
+new PipelineStack(app, 'PipelineStack', {
   env: {
     account: '640664844884',
     region: 'eu-west-1'
