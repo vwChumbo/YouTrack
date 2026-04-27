@@ -4,6 +4,7 @@ import * as scheduler from 'aws-cdk-lib/aws-scheduler';
 import * as targets from 'aws-cdk-lib/aws-scheduler-targets';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as dlm from 'aws-cdk-lib/aws-dlm';
+import * as cr from 'aws-cdk-lib/custom-resources';
 
 export interface AutomationStackProps extends cdk.StackProps {
   /**
@@ -156,6 +157,130 @@ export class AutomationStack extends cdk.Stack {
       },
     });
 
+    // ECR Lifecycle Policy for YouTrack image cleanup
+    // Using AwsCustomResource because the repository exists and we can't import it with lifecycle rules
+    const ecrLifecyclePolicy = new cr.AwsCustomResource(this, 'YouTrackEcrLifecyclePolicy', {
+      onCreate: {
+        service: 'ECR',
+        action: 'putLifecyclePolicy',
+        parameters: {
+          repositoryName: 'youtrack',
+          lifecyclePolicyText: JSON.stringify({
+            rules: [
+              {
+                rulePriority: 1,
+                description: 'Keep latest 5 tagged images',
+                selection: {
+                  tagStatus: 'tagged',
+                  countType: 'imageCountMoreThan',
+                  countNumber: 5,
+                },
+                action: {
+                  type: 'expire',
+                },
+              },
+              {
+                rulePriority: 2,
+                description: 'Remove tagged images older than 30 days',
+                selection: {
+                  tagStatus: 'tagged',
+                  countType: 'sinceImagePushed',
+                  countUnit: 'days',
+                  countNumber: 30,
+                },
+                action: {
+                  type: 'expire',
+                },
+              },
+              {
+                rulePriority: 3,
+                description: 'Remove untagged images older than 7 days',
+                selection: {
+                  tagStatus: 'untagged',
+                  countType: 'sinceImagePushed',
+                  countUnit: 'days',
+                  countNumber: 7,
+                },
+                action: {
+                  type: 'expire',
+                },
+              },
+            ],
+          }),
+        },
+        physicalResourceId: cr.PhysicalResourceId.of('youtrack-lifecycle-policy'),
+      },
+      onUpdate: {
+        service: 'ECR',
+        action: 'putLifecyclePolicy',
+        parameters: {
+          repositoryName: 'youtrack',
+          lifecyclePolicyText: JSON.stringify({
+            rules: [
+              {
+                rulePriority: 1,
+                description: 'Keep latest 5 tagged images',
+                selection: {
+                  tagStatus: 'tagged',
+                  countType: 'imageCountMoreThan',
+                  countNumber: 5,
+                },
+                action: {
+                  type: 'expire',
+                },
+              },
+              {
+                rulePriority: 2,
+                description: 'Remove tagged images older than 30 days',
+                selection: {
+                  tagStatus: 'tagged',
+                  countType: 'sinceImagePushed',
+                  countUnit: 'days',
+                  countNumber: 30,
+                },
+                action: {
+                  type: 'expire',
+                },
+              },
+              {
+                rulePriority: 3,
+                description: 'Remove untagged images older than 7 days',
+                selection: {
+                  tagStatus: 'untagged',
+                  countType: 'sinceImagePushed',
+                  countUnit: 'days',
+                  countNumber: 7,
+                },
+                action: {
+                  type: 'expire',
+                },
+              },
+            ],
+          }),
+        },
+        physicalResourceId: cr.PhysicalResourceId.of('youtrack-lifecycle-policy'),
+      },
+      onDelete: {
+        service: 'ECR',
+        action: 'deleteLifecyclePolicy',
+        parameters: {
+          repositoryName: 'youtrack',
+        },
+      },
+      policy: cr.AwsCustomResourcePolicy.fromStatements([
+        new iam.PolicyStatement({
+          actions: [
+            'ecr:PutLifecyclePolicy',
+            'ecr:DeleteLifecyclePolicy',
+            'ecr:GetLifecyclePolicy',
+          ],
+          resources: [
+            `arn:aws:ecr:${this.region}:${this.account}:repository/youtrack`,
+          ],
+        }),
+      ]),
+    });
+
     // Stack outputs
     new cdk.CfnOutput(this, 'StartScheduleArn', {
       value: startSchedule.attrArn,
@@ -180,6 +305,16 @@ export class AutomationStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'BackupSummary', {
       value: 'Weekly snapshots on Friday at 18:00 UTC, retaining 4 snapshots',
       description: 'Backup policy summary',
+    });
+
+    new cdk.CfnOutput(this, 'EcrRepositoryName', {
+      value: 'youtrack',
+      description: 'YouTrack ECR repository name',
+    });
+
+    new cdk.CfnOutput(this, 'EcrLifecycleSummary', {
+      value: 'Keep latest 5 tagged images OR images <30 days, remove untagged >7 days',
+      description: 'ECR lifecycle policy summary',
     });
   }
 }
