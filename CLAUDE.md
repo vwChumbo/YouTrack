@@ -83,7 +83,7 @@ docker tag jetbrains/youtrack:2026.1.12458 \
 docker push 640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:2026.1.12458
 ```
 
-**IMPORTANT**: Image push is one-time, NOT part of CDK deployment. Update image in ECR first, then update version in `lib/youtrack-stack.ts`, commit the change, and push to CodeCommit to trigger automatic deployment via the pipeline.
+**IMPORTANT**: Image push is one-time, NOT part of CDK deployment. Update image in ECR first, then update version in `lib/youtrack-stack.ts`, commit the change, and deploy manually using `cdk deploy YouTrackStack-Local`.
 
 ### Accessing Running Instance
 
@@ -234,12 +234,13 @@ aws ec2 create-volume --snapshot-id snap-xxxxx --availability-zone eu-west-1a \
 
 ## Current Deployment
 
-**Migration Status:** Infrastructure migrated to GitOps workflow on 2026-04-15
+**Migration Status:** Infrastructure migrated from CodeCommit to GitHub on 2026-04-27
 
-**Deployment Method:** Automated via CDK Pipeline
-- Pipeline Stack: `PipelineStack`
-- Application Stacks: `YouTrackStack`, `AutomationStack` (deployed by pipeline)
-- Repository: CodeCommit `youtrack-infrastructure`
+**Deployment Method:** Manual CDK deployment from local workstation
+- Application Stacks: `YouTrackStack-Local`, `AutomationStack-Local`
+- Repository: GitHub `https://github.com/vwChumbo/YouTrack.git`
+
+**Compliance Note:** GitHub is used as the source code provider to comply with One.Cloud regulations. CodeCommit is not permitted for source code storage.
 
 **Instance Details** (as of last deployment):
 - Stack: YouTrackStack
