@@ -221,6 +221,7 @@ export class YouTrackStack extends cdk.Stack {
       size: cdk.Size.gibibytes(50),
       volumeType: ec2.EbsDeviceVolumeType.GP3,
       encrypted: true,
+      encryptionKey: ebsKmsKey,  // Use customer-managed key
       removalPolicy: cdk.RemovalPolicy.SNAPSHOT,
     });
 
@@ -260,6 +261,16 @@ export class YouTrackStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'VpcId', {
       value: sharedVpc.vpc.vpcId,
       description: 'Shared VPC ID',
+    });
+
+    new cdk.CfnOutput(this, 'KmsKeyId', {
+      value: ebsKmsKey.keyId,
+      description: 'KMS Key ID for EBS encryption',
+    });
+
+    new cdk.CfnOutput(this, 'KmsKeyArn', {
+      value: ebsKmsKey.keyArn,
+      description: 'KMS Key ARN for EBS encryption',
     });
   }
 }
