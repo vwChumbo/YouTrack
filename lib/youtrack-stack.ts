@@ -207,6 +207,7 @@ export class YouTrackStack extends cdk.Stack {
           volume: ec2.BlockDeviceVolume.ebs(30, {
             volumeType: ec2.EbsDeviceVolumeType.GP3,
             encrypted: true,
+            kmsKey: ebsKmsKey,
           }),
         },
       ],
