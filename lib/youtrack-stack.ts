@@ -200,6 +200,7 @@ export class YouTrackStack extends cdk.Stack {
       securityGroup: securityGroup,
       role: instanceRole,
       userData: userData,
+      requireImdsv2: true,  // Enforce IMDSv2 for metadata security
       blockDevices: [
         {
           deviceName: '/dev/xvda',
