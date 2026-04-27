@@ -2,6 +2,7 @@ import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as kms from 'aws-cdk-lib/aws-kms';
 import { SharedVpc } from '@vwg-community/vws-cdk';
 
 export interface YouTrackStackProps extends cdk.StackProps {
@@ -18,8 +19,8 @@ export class YouTrackStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: YouTrackStackProps) {
     super(scope, id, props);
 
-    // Get availability zone from props or use default
-    const availabilityZone = props?.availabilityZone || 'eu-west-1a';
+    // Get availability zone from props (no default - let VPC choose)
+    const availabilityZone = props?.availabilityZone;
 
     // Add compliance tags
     cdk.Tags.of(this).add('Environment', 'production');
@@ -30,6 +31,40 @@ export class YouTrackStack extends cdk.Stack {
 
     // Import Shared VPC (required by SCP)
     const sharedVpc = new SharedVpc(this, 'SharedVpc');
+
+    // Create customer-managed KMS key for EBS encryption
+    const ebsKmsKey = new kms.Key(this, 'YouTrackEbsKey', {
+      description: 'Customer-managed key for YouTrack EBS encryption (VW-controlled)',
+      enableKeyRotation: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    ebsKmsKey.addAlias('alias/youtrack-ebs-encryption');
+
+    // Grant EC2 service access for volume encryption
+    ebsKmsKey.addToResourcePolicy(new iam.PolicyStatement({
+      sid: 'Allow EC2 to use the key for volume encryption',
+      principals: [new iam.ServicePrincipal('ec2.amazonaws.com')],
+      actions: [
+        'kms:Decrypt',
+        'kms:DescribeKey',
+        'kms:CreateGrant',
+      ],
+      resources: ['*'],
+    }));
+
+    // Grant DLM service access for snapshot encryption
+    ebsKmsKey.addToResourcePolicy(new iam.PolicyStatement({
+      sid: 'Allow DLM to use the key for snapshots',
+      principals: [new iam.ServicePrincipal('dlm.amazonaws.com')],
+      actions: [
+        'kms:Decrypt',
+        'kms:Encrypt',
+        'kms:DescribeKey',
+        'kms:CreateGrant',
+      ],
+      resources: ['*'],
+    }));
 
     // Security group for YouTrack EC2 instance
     const securityGroup = new ec2.SecurityGroup(this, 'YouTrackSecurityGroup', {
@@ -140,20 +175,31 @@ export class YouTrackStack extends cdk.Stack {
     // Using AMI from image factory (One.Cloud requirement)
     // IF20-amzn2-GROUP-PROD-20260403220337-AMI (Amazon Linux 2, x86_64)
     // t3.medium (4GB RAM) required for YouTrack 2026.1 - t3.small caused OOM errors
+
+    // Select ONE specific subnet to avoid AZ ambiguity
+    // Take the first PRIVATE_ISOLATED subnet available in the VPC
+    const selectedSubnets = sharedVpc.vpc.selectSubnets({
+      subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
+      onePerAz: true,  // Get one subnet per AZ
+    });
+
+    // Use the first subnet's AZ explicitly
+    const targetAz = availabilityZone || selectedSubnets.subnets[0].availabilityZone;
+
     this.instance = new ec2.Instance(this, 'YouTrackInstance', {
       instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MEDIUM),
       machineImage: ec2.MachineImage.genericLinux({
         'eu-west-1': 'ami-0b434d403262ef6c7',
       }),
       vpc: sharedVpc.vpc,
-      vpcSubnets: sharedVpc.vpc.selectSubnets({
+      vpcSubnets: {
         subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
-        availabilityZones: [availabilityZone],
-      }),
+        availabilityZones: [targetAz],  // Filter to match the target AZ
+      },
+      availabilityZone: targetAz,
       securityGroup: securityGroup,
       role: instanceRole,
       userData: userData,
-      availabilityZone: availabilityZone,
       blockDevices: [
         {
           deviceName: '/dev/xvda',
@@ -168,7 +214,8 @@ export class YouTrackStack extends cdk.Stack {
     // Create separate EBS volume for YouTrack data
     // This allows clean backups via DLM snapshots and data persistence across instance replacements
     const dataVolume = new ec2.Volume(this, 'YouTrackDataVolume', {
-      availabilityZone: availabilityZone,
+      // Use instance's AZ to ensure volume and instance are co-located
+      availabilityZone: this.instance.instanceAvailabilityZone,
       size: cdk.Size.gibibytes(50),
       volumeType: ec2.EbsDeviceVolumeType.GP3,
       encrypted: true,
