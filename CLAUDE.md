@@ -159,29 +159,6 @@ The infrastructure consists of three CDK stacks deployed in a GitOps workflow:
 
 Old test code from initial CDK exploration is preserved in `deprecated/cdk-test/` directory. This includes Lambda VPC experiments and S3 integration tests. Do not modify or deploy deprecated code.
 
-## Pipeline Architecture
-
-### GitOps Workflow
-
-The infrastructure uses a self-mutating CDK pipeline for automated deployment:
-
-**Pipeline Stages:**
-1. **Source**: CodeCommit repository (`youtrack-infrastructure`, main branch)
-2. **Synth**: CodeBuild runs `npm ci`, `npm run build`, `npx cdk synth` in Shared VPC
-3. **Self-Update**: Pipeline updates itself if pipeline code changed
-4. **Deploy**: Deploys YouTrackStack + AutomationStack
-
-**Key Features:**
-- Self-mutation: Pipeline can update its own configuration
-- Shared VPC Integration: CodeBuild runs in VPC for endpoint access (no Zscaler issues)
-- No environment variables needed: VPC endpoints handle AWS service access
-- Automatic deployment on git push to main branch
-
-**Repository:** `youtrack-infrastructure` (CodeCommit)
-**Branch:** main
-**Region:** eu-west-1
-**Account:** 640664844884
-
 ## Automation
 
 ### EC2 Instance Schedule
