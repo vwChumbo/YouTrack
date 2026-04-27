@@ -1,6 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import { Template, Match } from 'aws-cdk-lib/assertions';
-import { PipelineStack } from '../lib/pipeline-stack';
+import { PipelineStack } from '../deprecated/pipeline/pipeline-stack';
 
 describe('PipelineStack', () => {
   test('creates CodeCommit repository with correct name', () => {

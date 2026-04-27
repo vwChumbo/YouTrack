@@ -5,8 +5,8 @@ import * as pipelines from 'aws-cdk-lib/pipelines';
 import * as codebuild from 'aws-cdk-lib/aws-codebuild';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import { SharedVpc } from '@vwg-community/vws-cdk';
-import { YouTrackStack } from './youtrack-stack';
-import { AutomationStack } from './automation-stack';
+import { YouTrackStack } from '../../lib/youtrack-stack';
+import { AutomationStack } from '../../lib/automation-stack';
 
 export class PipelineStack extends cdk.Stack {
   public readonly repository: codecommit.Repository;
