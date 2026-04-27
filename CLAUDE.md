@@ -115,16 +115,9 @@ Then access YouTrack at `http://localhost:8484` in browser.
 
 ### Stack Structure
 
-The infrastructure consists of three CDK stacks deployed in a GitOps workflow:
+The infrastructure consists of two CDK stacks deployed manually from the local workstation:
 
-**1. PipelineStack** (`lib/pipeline-stack.ts`) - Deployed once locally
-- CodeCommit repository: `youtrack-infrastructure` (main branch)
-- Self-mutating CDK pipeline (can update its own configuration)
-- CodeBuild runs in Shared VPC for VPC endpoint access
-- Automatically deploys YouTrackStack and AutomationStack on git push
-- No environment variables needed (VPC endpoints handle AWS service access)
-
-**2. YouTrackStack** (`lib/youtrack-stack.ts`) - Deployed by pipeline
+**1. YouTrackStack** (`lib/youtrack-stack.ts`) - Deployed locally
 - EC2 t3.medium instance in eu-west-1a (4GB RAM required - t3.small causes OOM)
 - Amazon Linux 2 from image factory (ami-0b434d403262ef6c7)
 - Docker container running YouTrack from ECR
@@ -133,7 +126,7 @@ The infrastructure consists of three CDK stacks deployed in a GitOps workflow:
 - Private IP only, port 8080
 - SSM Session Manager access (no SSH)
 
-**3. AutomationStack** (`lib/automation-stack.ts`) - Deployed by pipeline
+**2. AutomationStack** (`lib/automation-stack.ts`) - Deployed locally
 - EventBridge Scheduler for EC2 start/stop (Mon-Fri 7AM-7PM UTC)
 - DLM lifecycle policy for weekly EBS snapshots (Friday 6PM UTC, 4 weeks retention)
 
