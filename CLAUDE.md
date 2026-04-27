@@ -27,9 +27,9 @@ The infrastructure is deployed manually from a local development workstation usi
 
 ### CDK Deployment
 
-**Deploy both stacks:**
+**Deploy all stacks:**
 ```bash
-cdk deploy YouTrackStack-Local AutomationStack-Local
+cdk deploy EcrStack-Local YouTrackStack-Local AutomationStack-Local
 ```
 
 **Deploy individual stack:**
@@ -39,7 +39,7 @@ cdk deploy YouTrackStack-Local
 
 **If SSL/CA certificate errors occur:**
 ```bash
-NODE_TLS_REJECT_UNAUTHORIZED=0 cdk deploy YouTrackStack-Local AutomationStack-Local
+NODE_TLS_REJECT_UNAUTHORIZED=0 cdk deploy EcrStack-Local YouTrackStack-Local AutomationStack-Local
 ```
 
 **Note:** SSL certificate validation issues may occur due to Zscaler proxy. Use the `NODE_TLS_REJECT_UNAUTHORIZED=0` workaround if you encounter certificate errors.
@@ -62,6 +62,8 @@ npm run watch
 **Destroy stack (use with extreme caution):**
 ```bash
 cdk destroy YouTrackStack-Local
+
+# Note: EcrStack-Local should NOT be destroyed (retains images)
 ```
 
 ## YouTrack Image Management
@@ -117,7 +119,13 @@ Then access YouTrack at `http://localhost:8484` in browser.
 
 The infrastructure consists of two CDK stacks deployed manually from the local workstation:
 
-**1. YouTrackStack** (`lib/youtrack-stack.ts`) - Deployed locally
+**1. EcrStack** (`lib/ecr-stack.ts`) - Deployed locally
+- ECR repository for YouTrack Docker images
+- Lifecycle policy: Keep last 3 tagged images
+- Image scanning on push enabled
+- Customer-managed KMS key for encryption
+
+**2. YouTrackStack** (`lib/youtrack-stack.ts`) - Deployed locally
 - EC2 t3.medium instance in eu-west-1a (4GB RAM required - t3.small causes OOM)
 - Amazon Linux 2 from image factory (ami-0b434d403262ef6c7)
 - Docker container running YouTrack from ECR
@@ -125,8 +133,10 @@ The infrastructure consists of two CDK stacks deployed manually from the local w
 - Volume tagged `Backup: weekly-dlm` for automated snapshots
 - Private IP only, port 8080
 - SSM Session Manager access (no SSH)
+- IMDSv2 enforced (requireImdsv2: true)
+- Root and data volumes encrypted with customer-managed KMS key
 
-**2. AutomationStack** (`lib/automation-stack.ts`) - Deployed locally
+**3. AutomationStack** (`lib/automation-stack.ts`) - Deployed locally
 - EventBridge Scheduler for EC2 start/stop (Mon-Fri 7AM-7PM UTC)
 - DLM lifecycle policy for weekly EBS snapshots (Friday 6PM UTC, 4 weeks retention)
 
@@ -205,6 +215,136 @@ aws ec2 create-volume --snapshot-id snap-xxxxx --availability-zone eu-west-1a \
 # Note: Stop instance first, detach old volume, attach new volume, start instance
 ```
 
+## Security Compliance
+
+### Encryption at Rest
+
+**EBS Volumes:**
+- Root volume (/dev/xvda, 30GB): Encrypted with customer-managed KMS key
+- Data volume (/dev/sdf, 50GB): Encrypted with customer-managed KMS key
+- KMS key rotation: Enabled (annual automatic rotation)
+- KMS key alias: `alias/youtrack-ebs-encryption`
+
+**ECR Repository:**
+- Encryption: AES-256 with customer-managed KMS key
+- KMS key alias: `alias/youtrack-ecr-encryption`
+
+**EBS Snapshots:**
+- Inherit encryption from source volume (customer-managed KMS key)
+- DLM policy encrypts all snapshots automatically
+- Retention: 4 weeks (28 days)
+
+### Instance Metadata Service
+
+**IMDSv2 Enforcement:**
+- Configuration: `requireImdsv2: true` in YouTrackStack
+- Protects against SSRF attacks to metadata service
+- Hop limit: 1 (default, prevents forwarding from containers)
+
+**Impact:**
+- Legacy IMDSv1 requests are rejected
+- Applications must use session-oriented IMDSv2 (PUT token request, then GET with token)
+- Docker containers can access metadata (hop limit allows)
+
+### Network Isolation
+
+**VPC Configuration:**
+- Subnet Type: PRIVATE_ISOLATED (no internet gateway, no NAT gateway)
+- No public IP addresses (enforced by One.Cloud SCP)
+- VPC Endpoints: Not required (SSM uses AWS PrivateLink automatically)
+
+**Security Group Rules:**
+- Inbound: Port 8080 from RFC 1918 private ranges only
+  - 10.0.0.0/8
+  - 172.16.0.0/12
+  - 192.168.0.0/16
+- Outbound: All traffic allowed (required for yum updates, ECR pulls, SSM)
+
+**Access Methods:**
+- SSM Session Manager: ONLY permitted access method (no SSH, no direct network access)
+- Port Forwarding: Via SSM for local browser access to YouTrack UI
+
+### IAM Permissions
+
+**EC2 Instance Role:**
+- Managed Policy: AmazonSSMManagedInstanceCore (SSM access)
+- Inline Policy: ECR read-only (GetAuthorizationToken, BatchCheckLayerAvailability, GetDownloadUrlForLayer, BatchGetImage)
+- No S3 access, no RDS access, no secrets access
+
+**Principle of Least Privilege:**
+- Instance can ONLY:
+  - Connect to SSM for management
+  - Pull Docker images from ECR
+  - Write logs to CloudWatch (via SSM agent)
+- Instance CANNOT:
+  - Access other AWS services
+  - Assume other IAM roles
+  - Read/write S3 buckets
+  - Access secrets or parameters
+
+### Compliance Tags
+
+**Required Tags (applied to all resources):**
+- Environment: production
+- Project: YouTrack
+- ManagedBy: CDK
+- Owner: a2i5giv
+- Purpose: Issue-Tracking
+
+**Backup Tags:**
+- Backup: weekly-dlm (on data volume and snapshots)
+
+### Known Security Findings
+
+**CVE-2016-1000027 (Spring Framework):**
+- Status: ACCEPTED RISK
+- Severity: CRITICAL (CVSS 9.8)
+- Component: Spring Framework in YouTrack vendor container
+- Justification: Vendor-managed container, no patch available, strong network isolation
+- Compensating Controls: PRIVATE_ISOLATED subnet, no public IP, RFC 1918 ingress only, IMDSv2, SSM-only access
+- Documentation: `docs/security-exceptions.md`
+- Review Date: 2027-04-27 (annual)
+
+**Risk Level:** MEDIUM (HIGH impact, LOW exploitability due to network controls)
+
+### Security Monitoring
+
+**CloudWatch Logs:**
+- SSM Session Manager logs (interactive sessions, port forwarding)
+- Instance system logs (console output, system messages)
+
+**Audit Trail:**
+- All SSM sessions logged to CloudWatch
+- IAM role usage tracked via CloudTrail
+- EBS snapshot creation logged via EventBridge
+
+**Alerting:**
+- None configured (development environment)
+- Manual review recommended quarterly
+
+### Security Best Practices
+
+**Operational Security:**
+1. Review SSM session logs monthly for anomalous access
+2. Verify encryption keys are active and not pending deletion
+3. Test snapshot restore procedure quarterly
+4. Review security group rules for unauthorized changes
+5. Validate IMDSv2 enforcement has not been disabled
+
+**Incident Response:**
+1. If compromise suspected: Stop instance immediately
+2. Create forensic snapshot of volumes before any changes
+3. Review CloudWatch logs for SSM session activity
+4. Check CloudTrail for IAM role usage
+5. Restore from known-good snapshot if needed
+
+**Vulnerability Management:**
+1. Monitor JetBrains security advisories for YouTrack updates
+2. Review NVD for new CVEs affecting Spring Framework quarterly
+3. Check CISA KEV catalog for known exploited vulnerabilities
+4. Update `docs/security-exceptions.md` with any new findings
+5. Plan remediation if new HIGH/CRITICAL vulnerabilities are discovered
+
 ## Common Issues and Solutions
 
 ### YouTrack Out of Memory
@@ -237,26 +377,34 @@ aws ec2 create-volume --snapshot-id snap-xxxxx --availability-zone eu-west-1a \
 **Migration Status:** Infrastructure migrated from CodeCommit to GitHub on 2026-04-27
 
 **Deployment Method:** Manual CDK deployment from local workstation
-- Application Stacks: `YouTrackStack-Local`, `AutomationStack-Local`
+- Application Stacks: `EcrStack-Local`, `YouTrackStack-Local`, `AutomationStack-Local`
 - Repository: GitHub `https://github.com/vwChumbo/YouTrack.git`
 
 **Compliance Note:** GitHub is used as the source code provider to comply with One.Cloud regulations. CodeCommit is not permitted for source code storage.
 
 **Instance Details** (as of last deployment):
-- Stack: YouTrackStack
-- Instance ID: i-0f9fe3a681f4c1d5a
-- Private IP: 192.168.146.15
-- Access URL: http://192.168.146.15:8080 (via SSM port forwarding)
+- Stack: YouTrackStack-Local
+- Instance ID: i-0591fecf34c1b50ca
+- Private IP: Check stack outputs or EC2 console
+- Access URL: http://<private-ip>:8080 (via SSM port forwarding)
 - VPC ID: vpc-05b5078f709cfc904
 - Availability Zone: eu-west-1a
 - Region: eu-west-1
 - Account: 640664844884
+
+**Security Configuration:**
+- IMDSv2: Enforced (requireImdsv2: true)
+- Root Volume: 30GB gp3, encrypted with customer-managed KMS key
+- Data Volume: 50GB gp3, encrypted with customer-managed KMS key
+- KMS Key Alias: alias/youtrack-ebs-encryption
+- KMS Key Rotation: Enabled (annual automatic)
 
 **Data Volume:**
 - Volume ID: Check stack outputs or EC2 console
 - Size: 50GB gp3
 - Mount Point: `/var/youtrack-data`
 - Backup Tag: `Backup: weekly-dlm`
+- Encryption: Customer-managed KMS key
 
 **Instance Availability:**
 - **Business Hours**: Monday-Friday 7AM-7PM UTC (instance running)
