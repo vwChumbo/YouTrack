@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This repository contains AWS CDK infrastructure for deploying YouTrack issue tracking on EC2 within Volkswagen's One.Cloud environment. The deployment uses Docker containerization with images stored in AWS ECR, running on a t3.medium EC2 instance within a Shared VPC.
 
-The infrastructure uses a GitOps workflow with a self-mutating CDK pipeline for automated deployment. Infrastructure changes are pushed to CodeCommit, triggering automatic deployment via AWS CodePipeline.
+The infrastructure is deployed manually from a local development workstation using AWS CDK. All source code is stored in GitHub to comply with One.Cloud regulations requiring compliant source code providers.
 
 ## One.Cloud Constraints
 
@@ -25,45 +25,24 @@ The infrastructure uses a GitOps workflow with a self-mutating CDK pipeline for 
 
 ## Development Commands
 
-### Initial Pipeline Deployment (One-Time Setup)
+### CDK Deployment
 
-**Deploy the pipeline stack from local machine:**
+**Deploy both stacks:**
 ```bash
-# Install dependencies
-npm install
-
-# Build TypeScript
-npm run build
-
-# Deploy pipeline stack (one-time setup)
-NODE_TLS_REJECT_UNAUTHORIZED=0 cdk deploy PipelineStack
-
-# Get CodeCommit URL from stack outputs
-aws cloudformation describe-stacks --stack-name PipelineStack \
-  --region eu-west-1 --query 'Stacks[0].Outputs'
-
-# Add CodeCommit remote
-git remote add codecommit <url-from-output>
-
-# Push code to trigger pipeline
-git push codecommit main
+cdk deploy YouTrackStack-Local AutomationStack-Local
 ```
 
-### Normal GitOps Workflow (After Initial Setup)
-
-**Make infrastructure changes and let the pipeline deploy:**
+**Deploy individual stack:**
 ```bash
-# Make infrastructure changes locally
-git commit -am "feat: your changes"
-
-# Push to CodeCommit - pipeline auto-deploys
-git push codecommit main
-
-# Monitor pipeline in AWS Console
-# CodePipeline -> youtrack-infrastructure-pipeline
+cdk deploy YouTrackStack-Local
 ```
 
-**Note:** Local `cdk deploy` is no longer needed after initial PipelineStack setup. All infrastructure changes are deployed automatically via the pipeline.
+**If SSL/CA certificate errors occur:**
+```bash
+NODE_TLS_REJECT_UNAUTHORIZED=0 cdk deploy YouTrackStack-Local AutomationStack-Local
+```
+
+**Note:** SSL certificate validation issues may occur due to Zscaler proxy. Use the `NODE_TLS_REJECT_UNAUTHORIZED=0` workaround if you encounter certificate errors.
 
 ### Local Development and Testing
 
@@ -80,13 +59,9 @@ npm run watch
 
 ### Emergency Manual Deployment
 
-**Only if pipeline is broken:**
+**Destroy stack (use with extreme caution):**
 ```bash
-# Deploy stack manually (with SSL workaround for Zscaler)
-NODE_TLS_REJECT_UNAUTHORIZED=0 cdk deploy YouTrackStack --require-approval never
-
-# Destroy stack
-cdk destroy YouTrackStack
+cdk destroy YouTrackStack-Local
 ```
 
 ## YouTrack Image Management
