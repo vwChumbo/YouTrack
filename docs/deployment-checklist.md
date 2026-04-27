@@ -49,9 +49,9 @@ echo "Current Instance ID: $INSTANCE_ID"
 aws ec2 describe-volumes --region eu-west-1 --filters "Name=tag:Backup,Values=weekly-dlm" --query 'Volumes[*].[VolumeId,Size,State,Encrypted]' --output table
 ```
 
-- [ ] Current instance ID recorded: `_________________`
-- [ ] Data volume ID recorded: `_________________`
-- [ ] Latest backup snapshot ID recorded: `_________________`
+- [ ] Current instance ID recorded: `i-0591fecf34c1b50ca`
+- [ ] Data volume ID recorded: `vol-0959de1b8294c8e9b`
+- [ ] Latest backup snapshot ID recorded: `snap-0933904884299fbc5`
 
 **Create manual snapshot if critical:**
 ```bash
