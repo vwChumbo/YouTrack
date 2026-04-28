@@ -6,7 +6,7 @@ describe('AutomationStack', () => {
   test('creates start schedule with correct configuration', () => {
     const app = new cdk.App();
     const stack = new AutomationStack(app, 'TestAutomationStack', {
-      instanceId: 'i-1234567890abcdef0',
+      // instanceId looked up at deploy time
       env: {
         account: '640664844884',
         region: 'eu-west-1',
@@ -30,7 +30,7 @@ describe('AutomationStack', () => {
   test('creates stop schedule with correct configuration', () => {
     const app = new cdk.App();
     const stack = new AutomationStack(app, 'TestAutomationStack', {
-      instanceId: 'i-1234567890abcdef0',
+      // instanceId looked up at deploy time
       env: {
         account: '640664844884',
         region: 'eu-west-1',
@@ -54,7 +54,7 @@ describe('AutomationStack', () => {
   test('creates IAM roles with correct permissions', () => {
     const app = new cdk.App();
     const stack = new AutomationStack(app, 'TestAutomationStack', {
-      instanceId: 'i-1234567890abcdef0',
+      // instanceId looked up at deploy time
       env: {
         account: '640664844884',
         region: 'eu-west-1',
@@ -102,7 +102,7 @@ describe('AutomationStack', () => {
   test('creates DLM lifecycle policy with correct configuration', () => {
     const app = new cdk.App();
     const stack = new AutomationStack(app, 'TestAutomationStack', {
-      instanceId: 'i-1234567890abcdef0',
+      // instanceId looked up at deploy time
       env: {
         account: '640664844884',
         region: 'eu-west-1',
@@ -142,7 +142,7 @@ describe('AutomationStack', () => {
   test('creates IAM role for DLM with correct permissions', () => {
     const app = new cdk.App();
     const stack = new AutomationStack(app, 'TestAutomationStack', {
-      instanceId: 'i-1234567890abcdef0',
+      // instanceId looked up at deploy time
       env: {
         account: '640664844884',
         region: 'eu-west-1',
@@ -186,7 +186,7 @@ describe('AutomationStack', () => {
   test('includes required compliance tags', () => {
     const app = new cdk.App();
     const stack = new AutomationStack(app, 'TestAutomationStack', {
-      instanceId: 'i-1234567890abcdef0',
+      // instanceId looked up at deploy time
       env: {
         account: '640664844884',
         region: 'eu-west-1',
@@ -201,7 +201,7 @@ describe('AutomationStack', () => {
   test('exports schedule and policy ARNs', () => {
     const app = new cdk.App();
     const stack = new AutomationStack(app, 'TestAutomationStack', {
-      instanceId: 'i-1234567890abcdef0',
+      // instanceId looked up at deploy time
       env: {
         account: '640664844884',
         region: 'eu-west-1',
@@ -222,7 +222,7 @@ describe('AutomationStack', () => {
     const app = new cdk.App();
     const testInstanceId = 'i-test123456789';
     const stack = new AutomationStack(app, 'TestAutomationStack', {
-      instanceId: testInstanceId,
+      // instanceId looked up at deploy time
       env: {
         account: '640664844884',
         region: 'eu-west-1',
@@ -242,7 +242,7 @@ describe('AutomationStack', () => {
   test('creates exactly 2 schedules and 1 DLM policy', () => {
     const app = new cdk.App();
     const stack = new AutomationStack(app, 'TestAutomationStack', {
-      instanceId: 'i-1234567890abcdef0',
+      // instanceId looked up at deploy time
       env: {
         account: '640664844884',
         region: 'eu-west-1',
@@ -259,7 +259,7 @@ describe('AutomationStack', () => {
   test('schedules have retry policy configured', () => {
     const app = new cdk.App();
     const stack = new AutomationStack(app, 'TestAutomationStack', {
-      instanceId: 'i-1234567890abcdef0',
+      // instanceId looked up at deploy time
       env: {
         account: '640664844884',
         region: 'eu-west-1',
@@ -282,7 +282,7 @@ describe('AutomationStack', () => {
   test('DLM policy tags snapshots correctly', () => {
     const app = new cdk.App();
     const stack = new AutomationStack(app, 'TestAutomationStack', {
-      instanceId: 'i-1234567890abcdef0',
+      // instanceId looked up at deploy time
       env: {
         account: '640664844884',
         region: 'eu-west-1',

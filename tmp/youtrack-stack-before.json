@@ -1,0 +1,65 @@
+{
+    "Stacks": [
+        {
+            "StackId": "arn:aws:cloudformation:eu-west-1:640664844884:stack/YouTrackStack-Local/6cac8170-3969-11f1-8662-0aa27d3f499b",
+            "StackName": "YouTrackStack-Local",
+            "ChangeSetId": "arn:aws:cloudformation:eu-west-1:640664844884:changeSet/cdk-deploy-change-set/a7add531-1106-4e1a-80d8-c628e8768313",
+            "Parameters": [
+                {
+                    "ParameterKey": "BootstrapVersion",
+                    "ParameterValue": "/cdk-bootstrap/hnb659fds/version",
+                    "ResolvedValue": "31"
+                }
+            ],
+            "CreationTime": "2026-04-16T07:53:58.475000+00:00",
+            "LastUpdatedTime": "2026-04-16T07:54:04.505000+00:00",
+            "RollbackConfiguration": {},
+            "StackStatus": "CREATE_COMPLETE",
+            "DisableRollback": false,
+            "NotificationARNs": [],
+            "Capabilities": [
+                "CAPABILITY_IAM",
+                "CAPABILITY_NAMED_IAM",
+                "CAPABILITY_AUTO_EXPAND"
+            ],
+            "Outputs": [
+                {
+                    "OutputKey": "VpcId",
+                    "OutputValue": "vpc-05b5078f709cfc904",
+                    "Description": "Shared VPC ID"
+                },
+                {
+                    "OutputKey": "InstanceId",
+                    "OutputValue": "i-0591fecf34c1b50ca",
+                    "Description": "EC2 Instance ID"
+                },
+                {
+                    "OutputKey": "PrivateIp",
+                    "OutputValue": "192.168.155.45",
+                    "Description": "EC2 Instance Private IP"
+                },
+                {
+                    "OutputKey": "SsmConnect",
+                    "OutputValue": "aws ssm start-session --target i-0591fecf34c1b50ca --region eu-west-1",
+                    "Description": "SSM Session Manager connect command"
+                },
+                {
+                    "OutputKey": "AccessUrl",
+                    "OutputValue": "http://192.168.155.45:8080",
+                    "Description": "YouTrack Access URL"
+                },
+                {
+                    "OutputKey": "ExportsOutputRefYouTrackInstance41A34E1C0BB93AE9",
+                    "OutputValue": "i-0591fecf34c1b50ca",
+                    "ExportName": "YouTrackStack-Local:ExportsOutputRefYouTrackInstance41A34E1C0BB93AE9"
+                }
+            ],
+            "RoleARN": "arn:aws:iam::640664844884:role/cdk-hnb659fds-cfn-exec-role-640664844884-eu-west-1",
+            "Tags": [],
+            "EnableTerminationProtection": false,
+            "DriftInformation": {
+                "StackDriftStatus": "NOT_CHECKED"
+            }
+        }
+    ]
+}

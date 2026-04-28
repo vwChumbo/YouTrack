@@ -18,5 +18,5 @@ new AutomationStack(app, 'AutomationStack-Local', {
     account: '640664844884',
     region: 'eu-west-1'
   },
-  instanceId: youtrackStack.instance.instanceId,
+  // Instance ID looked up by tag at deploy time - no cross-stack reference
 });

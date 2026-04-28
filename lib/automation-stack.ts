@@ -7,10 +7,7 @@ import * as dlm from 'aws-cdk-lib/aws-dlm';
 import * as cr from 'aws-cdk-lib/custom-resources';
 
 export interface AutomationStackProps extends cdk.StackProps {
-  /**
-   * EC2 Instance ID to start/stop on schedule
-   */
-  instanceId: string;
+  // No instance ID needed - will be looked up by tag at deploy time
 }
 
 export class AutomationStack extends cdk.Stack {
@@ -24,6 +21,41 @@ export class AutomationStack extends cdk.Stack {
     cdk.Tags.of(this).add('Owner', 'a2i5giv');
     cdk.Tags.of(this).add('Purpose', 'Automation');
 
+    // Look up YouTrack instance ID by tag at deploy time
+    // This avoids cross-stack reference that prevents instance replacement
+    const instanceLookup = new cr.AwsCustomResource(this, 'YouTrackInstanceLookup', {
+      onUpdate: {
+        service: 'EC2',
+        action: 'describeInstances',
+        parameters: {
+          Filters: [
+            {
+              Name: 'tag:Project',
+              Values: ['YouTrack'],
+            },
+            {
+              Name: 'tag:aws:cloudformation:stack-name',
+              Values: ['YouTrackStack-Local'],
+            },
+            {
+              Name: 'instance-state-name',
+              Values: ['running', 'stopped'],
+            },
+          ],
+        },
+        physicalResourceId: cr.PhysicalResourceId.of('youtrack-instance-lookup'),
+        outputPaths: ['Reservations.0.Instances.0.InstanceId'],
+      },
+      policy: cr.AwsCustomResourcePolicy.fromStatements([
+        new iam.PolicyStatement({
+          actions: ['ec2:DescribeInstances'],
+          resources: ['*'],
+        }),
+      ]),
+    });
+
+    const instanceId = instanceLookup.getResponseField('Reservations.0.Instances.0.InstanceId');
+
     // IAM role for Start Schedule
     const startRole = new iam.Role(this, 'YouTrackStartRole', {
       assumedBy: new iam.ServicePrincipal('scheduler.amazonaws.com'),
@@ -33,8 +65,13 @@ export class AutomationStack extends cdk.Stack {
     startRole.addToPolicy(new iam.PolicyStatement({
       actions: ['ec2:StartInstances'],
       resources: [
-        `arn:aws:ec2:${this.region}:${this.account}:instance/${props.instanceId}`,
+        `arn:aws:ec2:${this.region}:${this.account}:instance/*`,
       ],
+      conditions: {
+        'StringEquals': {
+          'ec2:ResourceTag/Project': 'YouTrack',
+        },
+      },
     }));
 
     // IAM role for Stop Schedule
@@ -46,8 +83,13 @@ export class AutomationStack extends cdk.Stack {
     stopRole.addToPolicy(new iam.PolicyStatement({
       actions: ['ec2:StopInstances'],
       resources: [
-        `arn:aws:ec2:${this.region}:${this.account}:instance/${props.instanceId}`,
+        `arn:aws:ec2:${this.region}:${this.account}:instance/*`,
       ],
+      conditions: {
+        'StringEquals': {
+          'ec2:ResourceTag/Project': 'YouTrack',
+        },
+      },
     }));
 
     // Start schedule: Monday-Friday at 07:00 UTC (7 AM WET / 8 AM WEST)
@@ -63,7 +105,7 @@ export class AutomationStack extends cdk.Stack {
         arn: 'arn:aws:scheduler:::aws-sdk:ec2:startInstances',
         roleArn: startRole.roleArn,
         input: JSON.stringify({
-          InstanceIds: [props.instanceId],
+          InstanceIds: [instanceId],
         }),
         retryPolicy: {
           maximumRetryAttempts: 3,
@@ -85,7 +127,7 @@ export class AutomationStack extends cdk.Stack {
         arn: 'arn:aws:scheduler:::aws-sdk:ec2:stopInstances',
         roleArn: stopRole.roleArn,
         input: JSON.stringify({
-          InstanceIds: [props.instanceId],
+          InstanceIds: [instanceId],
         }),
         retryPolicy: {
           maximumRetryAttempts: 3,
