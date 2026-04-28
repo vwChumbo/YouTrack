@@ -213,12 +213,14 @@ export class YouTrackStack extends cdk.Stack {
       ],
     });
 
-    // Create separate EBS volume for YouTrack data
+    // Create separate EBS volume for YouTrack data from pre-deployment snapshot
     // This allows clean backups via DLM snapshots and data persistence across instance replacements
-    const dataVolume = new ec2.Volume(this, 'YouTrackDataVolume', {
+    // NOTE: Volume recreated from snapshot snap-07f8ac4cbc445e5e6 to enable customer-managed KMS encryption
+    // (AWS does not allow in-place encryption changes on existing volumes)
+    const dataVolume = new ec2.Volume(this, 'YouTrackDataVolumeEncrypted', {
       // Use instance's AZ to ensure volume and instance are co-located
       availabilityZone: this.instance.instanceAvailabilityZone,
-      size: cdk.Size.gibibytes(50),
+      snapshotId: 'snap-07f8ac4cbc445e5e6',  // Pre-deployment snapshot from 2026-04-27
       volumeType: ec2.EbsDeviceVolumeType.GP3,
       encrypted: true,
       encryptionKey: ebsKmsKey,  // Use customer-managed key
