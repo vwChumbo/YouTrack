@@ -89,24 +89,24 @@ docker push 640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:2026.1.12458
 
 ### Accessing Running Instance
 
-**Note:** Instance runs on a schedule (Mon-Fri 7AM-7PM UTC). If instance is stopped, start it manually or wait for the scheduled start time.
+**Note:** Instance runs on a schedule (Mon-Fri 8AM-7PM UTC). If instance is stopped, start it manually or wait for the scheduled start time.
 
 ```bash
 # Get current stack outputs
 aws cloudformation describe-stacks --stack-name YouTrackStack --region eu-west-1 --query 'Stacks[0].Outputs'
 
 # Check instance state
-aws ec2 describe-instances --instance-ids i-0f9fe3a681f4c1d5a --region eu-west-1 \
+aws ec2 describe-instances --instance-ids i-0535d4cb73b266680 --region eu-west-1 \
   --query 'Reservations[0].Instances[0].State.Name'
 
 # Start instance manually if needed
-aws ec2 start-instances --instance-ids i-0f9fe3a681f4c1d5a --region eu-west-1
+aws ec2 start-instances --instance-ids i-0535d4cb73b266680 --region eu-west-1
 
 # Connect via SSM Session Manager
-aws ssm start-session --target i-0f9fe3a681f4c1d5a --region eu-west-1
+aws ssm start-session --target i-0535d4cb73b266680 --region eu-west-1
 
 # Port forwarding to access YouTrack UI (use different local port if 8080 busy)
-aws ssm start-session --target i-0f9fe3a681f4c1d5a --region eu-west-1 \
+aws ssm start-session --target i-0535d4cb73b266680 --region eu-west-1 \
   --document-name AWS-StartPortForwardingSession \
   --parameters '{"portNumber":["8080"],"localPortNumber":["8484"]}'
 ```
@@ -148,7 +148,15 @@ The infrastructure consists of two CDK stacks deployed manually from the local w
 
 ### Docker Container Configuration
 
-**Critical Permissions:**
+**Volume Mounts (all 4 required):**
+- `/var/youtrack-data/data` → `/opt/youtrack/data` (database, application data)
+- `/var/youtrack-data/conf` → `/opt/youtrack/conf` (configuration files)
+- `/var/youtrack-data/logs` → `/opt/youtrack/logs` (application logs)
+- `/var/youtrack-data/backups` → `/opt/youtrack/backups` (internal backups)
+
+**Critical:** All 4 directories must be persisted to EBS. Missing any directory (especially conf) will cause YouTrack to show setup wizard on instance replacement, losing configuration and database connection.
+
+**Permissions:**
 - YouTrack container runs as UID/GID 13001:13001
 - Data directory `/var/youtrack-data` must be owned by 13001:13001
 - UserData script sets: `chown -R 13001:13001 /var/youtrack-data` and `chmod -R 755 /var/youtrack-data`
@@ -169,7 +177,7 @@ Old test code from initial CDK exploration is preserved in `deprecated/cdk-test/
 **Purpose:** Cost optimization - instance only runs during business hours
 
 **Schedule:**
-- **Start**: Monday-Friday at 07:00 UTC (7 AM WET / 8 AM WEST)
+- **Start**: Monday-Friday at 08:00 UTC (8 AM WET / 9 AM WEST)
 - **Stop**: Monday-Friday at 19:00 UTC (7 PM WET / 8 PM WEST)
 
 **Note:** Uses fixed UTC times. Approximately 1 hour shift during DST transitions (WET/WEST) is acceptable for dev environment.
@@ -179,10 +187,10 @@ Old test code from initial CDK exploration is preserved in `deprecated/cdk-test/
 **Manual Override:**
 ```bash
 # Start instance manually if needed outside business hours
-aws ec2 start-instances --instance-ids i-0f9fe3a681f4c1d5a --region eu-west-1
+aws ec2 start-instances --instance-ids i-0535d4cb73b266680 --region eu-west-1
 
 # Stop instance manually
-aws ec2 stop-instances --instance-ids i-0f9fe3a681f4c1d5a --region eu-west-1
+aws ec2 stop-instances --instance-ids i-0535d4cb73b266680 --region eu-west-1
 ```
 
 ### EBS Snapshot Backups
@@ -382,11 +390,11 @@ aws ec2 create-volume --snapshot-id snap-xxxxx --availability-zone eu-west-1a \
 
 **Compliance Note:** GitHub is used as the source code provider to comply with One.Cloud regulations. CodeCommit is not permitted for source code storage.
 
-**Instance Details** (as of last deployment):
+**Instance Details** (as of 2026-04-29):
 - Stack: YouTrackStack-Local
-- Instance ID: i-0591fecf34c1b50ca
-- Private IP: Check stack outputs or EC2 console
-- Access URL: http://<private-ip>:8080 (via SSM port forwarding)
+- Instance ID: i-0535d4cb73b266680
+- Private IP: 192.168.148.21
+- Access URL: http://192.168.148.21:8080 (via SSM port forwarding)
 - VPC ID: vpc-05b5078f709cfc904
 - Availability Zone: eu-west-1a
 - Region: eu-west-1
@@ -396,25 +404,30 @@ aws ec2 create-volume --snapshot-id snap-xxxxx --availability-zone eu-west-1a \
 - IMDSv2: Enforced (requireImdsv2: true)
 - Root Volume: 30GB gp3, encrypted with customer-managed KMS key
 - Data Volume: 50GB gp3, encrypted with customer-managed KMS key
-- KMS Key Alias: alias/youtrack-ebs-encryption
+- EBS KMS Key Alias: alias/youtrack-ebs-encryption
+- Logs KMS Key Alias: alias/youtrack-logs-encryption
 - KMS Key Rotation: Enabled (annual automatic)
 
 **Data Volume:**
 - Volume ID: Check stack outputs or EC2 console
 - Size: 50GB gp3
 - Mount Point: `/var/youtrack-data`
+- Subdirectories: data, conf, logs, backups (all 4 required volumes)
 - Backup Tag: `Backup: weekly-dlm`
 - Encryption: Customer-managed KMS key
 
 **Instance Availability:**
-- **Business Hours**: Monday-Friday 7AM-7PM UTC (instance running)
+- **Business Hours**: Monday-Friday 8AM-7PM UTC (instance running)
+  - Winter (WET): 8AM-7PM Lisbon time
+  - Summer (WEST): 9AM-8PM Lisbon time (1 hour shift)
 - **Off Hours**: Instance automatically stopped (use manual start if needed)
 
 **Costs:**
 - EC2 t3.medium: ~$7/month (75% reduction due to scheduling)
 - EBS 50GB gp3: ~$4/month
 - EBS snapshots: ~$2/month (incremental, 4 weeks retention)
-- ECR storage: ~$2/year ($0.10/GB/month x 2GB image)
-- **Total: ~$13-14/month** (vs ~$36/month without automation)
+- CloudWatch Logs: <$1/month (SSM session logs, 1-year retention)
+- KMS keys: $2/month (2 keys: EBS + Logs)
+- **Total: ~$15-16/month** (vs ~$36/month without automation)
 
 See `docs/youtrack-access.md` for detailed access instructions and maintenance procedures.
