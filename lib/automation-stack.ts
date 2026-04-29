@@ -61,11 +61,11 @@ export class AutomationStack extends cdk.Stack {
       },
     }));
 
-    // Start schedule: Monday-Friday at 08:00 UTC (8 AM WET / 9 AM WEST)
+    // Start schedule: Monday-Friday at 07:00 UTC (7 AM WET / 8 AM WEST)
     const startSchedule = new scheduler.CfnSchedule(this, 'YouTrackStartSchedule', {
       name: 'youtrack-start-schedule',
-      description: 'Start YouTrack EC2 instance Mon-Fri at 8 AM UTC',
-      scheduleExpression: 'cron(0 8 ? * MON-FRI *)',
+      description: 'Start YouTrack EC2 instance Mon-Fri at 7 AM UTC',
+      scheduleExpression: 'cron(0 7 ? * MON-FRI *)',
       scheduleExpressionTimezone: 'UTC',
       flexibleTimeWindow: {
         mode: 'OFF',
