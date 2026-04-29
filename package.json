@@ -13,7 +13,6 @@
   "devDependencies": {
     "@types/jest": "^30",
     "@types/node": "^24.10.1",
-    "@vwg-community/vws-cdk": "^2.28.0",
     "aws-cdk": "^2.1118.0",
     "jest": "^30",
     "ts-jest": "^29",
@@ -21,6 +20,7 @@
     "typescript": "~5.9.3"
   },
   "dependencies": {
+    "@vwg-community/vws-cdk": "^2.28.0",
     "aws-cdk-lib": "^2.239.0",
     "constructs": "^10.5.0"
   }
