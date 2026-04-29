@@ -1,0 +1,37 @@
+[
+    {
+        "OutputKey": "VpcId",
+        "OutputValue": "vpc-05b5078f709cfc904",
+        "Description": "Shared VPC ID"
+    },
+    {
+        "OutputKey": "KmsKeyId",
+        "OutputValue": "e70778f4-cced-4312-a192-03cbfdf5c4e0",
+        "Description": "KMS Key ID for EBS encryption"
+    },
+    {
+        "OutputKey": "KmsKeyArn",
+        "OutputValue": "arn:aws:kms:eu-west-1:640664844884:key/e70778f4-cced-4312-a192-03cbfdf5c4e0",
+        "Description": "KMS Key ARN for EBS encryption"
+    },
+    {
+        "OutputKey": "InstanceId",
+        "OutputValue": "i-0535d4cb73b266680",
+        "Description": "EC2 Instance ID"
+    },
+    {
+        "OutputKey": "PrivateIp",
+        "OutputValue": "192.168.148.21",
+        "Description": "EC2 Instance Private IP"
+    },
+    {
+        "OutputKey": "SsmConnect",
+        "OutputValue": "aws ssm start-session --target i-0535d4cb73b266680 --region eu-west-1",
+        "Description": "SSM Session Manager connect command"
+    },
+    {
+        "OutputKey": "AccessUrl",
+        "OutputValue": "http://192.168.148.21:8080",
+        "Description": "YouTrack Access URL"
+    }
+]

@@ -1,0 +1,166 @@
+    {
+        "Description": "",
+        "Encrypted": true,
+        "KmsKeyId": "arn:aws:kms:eu-west-1:640664844884:key/0d882071-1cf4-41ab-a994-1fa8b119400d",
+        "OwnerId": "640664844884",
+        "Progress": "100%",
+        "SnapshotId": "snap-0d223cfa8daa5063c",
+        "StartTime": "2026-04-28T08:40:23.155000+00:00",
+        "State": "completed",
+        "VolumeId": "vol-07ccad9d4b7490367",
+        "VolumeSize": 50,
+        "Tags": [
+            {
+                "Key": "Project",
+                "Value": "YouTrack"
+            },
+            {
+                "Key": "Environment",
+                "Value": "production"
+            },
+            {
+                "Key": "Name",
+                "Value": "youtrack-data"
+            },
+            {
+                "Key": "aws:cloudformation:logical-id",
+                "Value": "YouTrackDataVolumeEncrypted08331A22"
+            },
+            {
+                "Key": "Backup",
+                "Value": "weekly-dlm"
+            },
+            {
+                "Key": "Purpose",
+                "Value": "Issue-Tracking"
+            },
+            {
+                "Key": "Owner",
+                "Value": "a2i5giv"
+            },
+            {
+                "Key": "aws:cloudformation:stack-id",
+                "Value": "arn:aws:cloudformation:eu-west-1:640664844884:stack/YouTrackStack-Local/6cac8170-3969-11f1-8662-0aa27d3f499b"
+            },
+            {
+                "Key": "ManagedBy",
+                "Value": "CDK"
+            },
+            {
+                "Key": "aws:cloudformation:stack-name",
+                "Value": "YouTrackStack-Local"
+            }
+        ],
+        "StorageTier": "standard"
+    },
+    {
+        "Description": "",
+        "Encrypted": true,
+        "KmsKeyId": "arn:aws:kms:eu-west-1:640664844884:key/2acd66c3-6ab5-48dd-9bd1-e7d8ed0fca2e",
+        "OwnerId": "640664844884",
+        "Progress": "100%",
+        "SnapshotId": "snap-0fa89856719cf82a6",
+        "StartTime": "2026-04-28T08:45:26.754000+00:00",
+        "State": "completed",
+        "VolumeId": "vol-0443bc353549c6182",
+        "VolumeSize": 50,
+        "Tags": [
+            {
+                "Key": "Backup",
+                "Value": "weekly-dlm"
+            },
+            {
+                "Key": "ManagedBy",
+                "Value": "CDK"
+            },
+            {
+                "Key": "aws:cloudformation:stack-name",
+                "Value": "YouTrackStack-Local"
+            },
+            {
+                "Key": "aws:cloudformation:logical-id",
+                "Value": "YouTrackDataVolumeEncrypted08331A22"
+            },
+            {
+                "Key": "Owner",
+                "Value": "a2i5giv"
+            },
+            {
+                "Key": "Purpose",
+                "Value": "Issue-Tracking"
+            },
+            {
+                "Key": "Name",
+                "Value": "youtrack-data"
+            },
+            {
+                "Key": "aws:cloudformation:stack-id",
+                "Value": "arn:aws:cloudformation:eu-west-1:640664844884:stack/YouTrackStack-Local/6cac8170-3969-11f1-8662-0aa27d3f499b"
+            },
+            {
+                "Key": "Project",
+                "Value": "YouTrack"
+            },
+            {
+                "Key": "Environment",
+                "Value": "production"
+            }
+        ],
+        "StorageTier": "standard"
+    },
+    {
+        "Description": "",
+        "Encrypted": true,
+        "KmsKeyId": "arn:aws:kms:eu-west-1:640664844884:key/99592e25-cafa-4a3d-a425-7af96f7aef7b",
+        "OwnerId": "640664844884",
+        "Progress": "100%",
+        "SnapshotId": "snap-0e3693731a434df91",
+        "StartTime": "2026-04-28T14:38:18.470000+00:00",
+        "State": "completed",
+        "VolumeId": "vol-0f7dc27d96f738872",
+        "VolumeSize": 50,
+        "Tags": [
+            {
+                "Key": "Project",
+                "Value": "YouTrack"
+            },
+            {
+                "Key": "aws:cloudformation:logical-id",
+                "Value": "YouTrackDataVolumeEncrypted08331A22"
+            },
+            {
+                "Key": "Environment",
+                "Value": "production"
+            },
+            {
+                "Key": "Name",
+                "Value": "youtrack-data"
+            },
+            {
+                "Key": "aws:cloudformation:stack-id",
+                "Value": "arn:aws:cloudformation:eu-west-1:640664844884:stack/YouTrackStack-Local/6cac8170-3969-11f1-8662-0aa27d3f499b"
+            },
+            {
+                "Key": "Backup",
+                "Value": "weekly-dlm"
+            },
+            {
+                "Key": "ManagedBy",
+                "Value": "CDK"
+            },
+            {
+                "Key": "Owner",
+                "Value": "a2i5giv"
+            },
+            {
+                "Key": "Purpose",
+                "Value": "Issue-Tracking"
+            },
+            {
+                "Key": "aws:cloudformation:stack-name",
+                "Value": "YouTrackStack-Local"
+            }
+        ],
+        "StorageTier": "standard"
+    }
+]

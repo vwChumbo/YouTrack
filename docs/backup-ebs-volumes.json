@@ -1,0 +1,70 @@
+{
+    "Volumes": [
+        {
+            "Attachments": [
+                {
+                    "AttachTime": "2026-04-28T15:03:05+00:00",
+                    "Device": "/dev/sdf",
+                    "InstanceId": "i-0535d4cb73b266680",
+                    "State": "attached",
+                    "VolumeId": "vol-0e7e1438ea17e20ac",
+                    "DeleteOnTermination": false
+                }
+            ],
+            "AvailabilityZone": "eu-west-1a",
+            "CreateTime": "2026-04-28T15:02:57.919000+00:00",
+            "Encrypted": true,
+            "KmsKeyId": "arn:aws:kms:eu-west-1:640664844884:key/e70778f4-cced-4312-a192-03cbfdf5c4e0",
+            "Size": 50,
+            "SnapshotId": "",
+            "State": "in-use",
+            "VolumeId": "vol-0e7e1438ea17e20ac",
+            "Iops": 3000,
+            "Tags": [
+                {
+                    "Key": "ManagedBy",
+                    "Value": "CDK"
+                },
+                {
+                    "Key": "aws:cloudformation:stack-name",
+                    "Value": "YouTrackStack-Local"
+                },
+                {
+                    "Key": "aws:cloudformation:stack-id",
+                    "Value": "arn:aws:cloudformation:eu-west-1:640664844884:stack/YouTrackStack-Local/ee9aa2e0-4312-11f1-9cab-0a5a90d6740f"
+                },
+                {
+                    "Key": "Environment",
+                    "Value": "production"
+                },
+                {
+                    "Key": "aws:cloudformation:logical-id",
+                    "Value": "YouTrackDataVolumeEncrypted08331A22"
+                },
+                {
+                    "Key": "Name",
+                    "Value": "youtrack-data"
+                },
+                {
+                    "Key": "Backup",
+                    "Value": "weekly-dlm"
+                },
+                {
+                    "Key": "Purpose",
+                    "Value": "Issue-Tracking"
+                },
+                {
+                    "Key": "Project",
+                    "Value": "YouTrack"
+                },
+                {
+                    "Key": "Owner",
+                    "Value": "a2i5giv"
+                }
+            ],
+            "VolumeType": "gp3",
+            "MultiAttachEnabled": false,
+            "Throughput": 125
+        }
+    ]
+}

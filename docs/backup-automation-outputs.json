@@ -1,0 +1,36 @@
+    {
+        "OutputKey": "BackupSummary",
+        "OutputValue": "Weekly snapshots on Friday at 19:30 UTC, retaining 4 snapshots",
+        "Description": "Backup policy summary"
+    },
+    {
+        "OutputKey": "InstanceId",
+        "OutputValue": "i-0535d4cb73b266680",
+        "Description": "YouTrack EC2 instance ID"
+    },
+    {
+        "OutputKey": "StopScheduleArn",
+        "OutputValue": "arn:aws:scheduler:eu-west-1:640664844884:schedule/default/youtrack-stop-schedule",
+        "Description": "ARN of the stop schedule"
+    },
+    {
+        "OutputKey": "Note",
+        "OutputValue": "ECR lifecycle policy must be managed manually via AWS CLI due to Lambda SCP restrictions",
+        "Description": "ECR lifecycle note"
+    },
+    {
+        "OutputKey": "DlmPolicyArn",
+        "OutputValue": "arn:aws:dlm:eu-west-1:640664844884:policy/policy-051fac74bd53cc579",
+        "Description": "ARN of the DLM lifecycle policy"
+    },
+    {
+        "OutputKey": "StartScheduleArn",
+        "OutputValue": "arn:aws:scheduler:eu-west-1:640664844884:schedule/default/youtrack-start-schedule",
+        "Description": "ARN of the start schedule"
+    },
+    {
+        "OutputKey": "ScheduleSummary",
+        "OutputValue": "Mon-Fri: Start at 08:00 UTC, Stop at 19:00 UTC",
+        "Description": "Schedule summary"
+    }
+]
