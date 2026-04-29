@@ -4,9 +4,11 @@ import { Aspects } from 'aws-cdk-lib';
 import { CfnInclude } from 'aws-cdk-lib/cloudformation-include';
 import { BootstraplessSynthesizer, KeyStack, KeyPurpose } from '@vwg-community/vws-cdk';
 import { PolicyStatement, Effect, ManagedPolicy } from 'aws-cdk-lib/aws-iam';
+import { IKey } from 'aws-cdk-lib/aws-kms';
 import { AddStsActionsToTrustPolicyAspect } from '../util/add-sts-actions-to-trust-policy-aspect';
 
 export interface BootstrapStackProps extends cdk.StackProps {
+
   /**
    * Additional IAM policy statements for CDK execution role.
    * @default - Service-specific wildcard permissions (cloudformation:*, ec2:*, etc.)
@@ -25,7 +27,7 @@ export interface BootstrapStackProps extends cdk.StackProps {
  * Replaces default `cdk bootstrap` to resolve One.Cloud compliance findings.
  */
 export class BootstrapStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: BootstrapStackProps) {
+  constructor(scope: Construct, id: string, props: BootstrapStackProps) {
     super(scope, id, {
       synthesizer: new BootstraplessSynthesizer(),
       ...props,
@@ -61,6 +63,7 @@ export class BootstrapStack extends cdk.Stack {
         actions: [
           'cloudformation:*',
           'cloudwatch:*',
+          'dlm:*',
           'ec2:*',
           'ecr:*',
           'events:*',
@@ -69,6 +72,7 @@ export class BootstrapStack extends cdk.Stack {
           'lambda:*',
           'logs:*',
           's3:*',
+          'scheduler:*',
           'serverlessrepo:*',
           'ssm:*',
         ],
@@ -81,7 +85,7 @@ export class BootstrapStack extends cdk.Stack {
       statements: props?.policyStatements || defaultPolicyStatements,
     });
 
-    // Lookup CICD KMS key from KeyStack
+    // Get CICD KMS key from lookup (requires key to exist in AWS)
     const cicdKey = KeyStack.getKeyFromLookup(this, 'CicdKeyLookup', KeyPurpose.CICD);
 
     // Include CDK bootstrap template with custom parameters

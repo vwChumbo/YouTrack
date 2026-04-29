@@ -1,4 +1,10 @@
 {
+  "key-provider:account=640664844884:aliasName=alias/cicd-key:region=eu-west-1": {
+    "keyId": "200688f6-a9eb-4c64-a0d7-940b143496cd"
+  },
+  "key-provider:account=640664844884:aliasName=alias/app-prod-key:region=eu-west-1": {
+    "keyId": "200688f6-a9eb-4c64-a0d7-940b143496cd"
+  },
   "availability-zones:account=640664844884:region=eu-west-1": [
     "eu-west-1a",
     "eu-west-1b",

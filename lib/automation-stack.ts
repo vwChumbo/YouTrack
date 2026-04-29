@@ -189,7 +189,7 @@ export class AutomationStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, 'ScheduleSummary', {
-      value: 'Mon-Fri: Start at 08:00 UTC, Stop at 19:00 UTC',
+      value: 'Mon-Fri: Start at 07:00 UTC, Stop at 19:00 UTC',
       description: 'Schedule summary',
     });
 

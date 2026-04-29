@@ -6,11 +6,7 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import { SharedVpc, KeyStack, KeyPurpose } from '@vwg-community/vws-cdk';
 
 export interface YouTrackStackProps extends cdk.StackProps {
-  /**
-   * Availability Zone for EC2 instance and EBS volume
-   * @default 'eu-west-1a'
-   */
-  availabilityZone?: string;
+  // No additional props needed
 }
 
 export class YouTrackStack extends cdk.Stack {
@@ -18,9 +14,6 @@ export class YouTrackStack extends cdk.Stack {
 
   constructor(scope: Construct, id: string, props?: YouTrackStackProps) {
     super(scope, id, props);
-
-    // Get availability zone from props (no default - let VPC choose)
-    const availabilityZone = props?.availabilityZone;
 
     // Add compliance tags
     cdk.Tags.of(this).add('Environment', 'production');
@@ -32,13 +25,14 @@ export class YouTrackStack extends cdk.Stack {
     // Import Shared VPC (required by SCP)
     const sharedVpc = new SharedVpc(this, 'SharedVpc');
 
-    // Lookup shared CICD KMS key from KeyStack
-    const cicdKey = KeyStack.getKeyFromLookup(this, 'CicdKeyLookup', KeyPurpose.CICD);
+    // Get APP KMS key from lookup for application resources (EBS, Logs)
+    // Use APP_PROD since this is production environment
+    const appKey = KeyStack.getKeyFromLookup(this, 'AppKeyLookup', KeyPurpose.APP_PROD);
 
     // CloudWatch log group for SSM Session Manager logs
     const ssmLogGroup = new logs.LogGroup(this, 'SsmSessionLogs', {
       logGroupName: '/aws/ssm/YouTrack',
-      encryptionKey: cicdKey,
+      encryptionKey: appKey,
       retention: logs.RetentionDays.ONE_YEAR,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
@@ -99,7 +93,7 @@ export class YouTrackStack extends cdk.Stack {
     }));
 
     // Grant instance role permission to use logs KMS key
-    cicdKey.grantEncryptDecrypt(instanceRole);
+    appKey.grantEncryptDecrypt(instanceRole);
 
     // UserData script to install Docker and run YouTrack
     const userData = ec2.UserData.forLinux();
@@ -177,15 +171,12 @@ export class YouTrackStack extends cdk.Stack {
     // IF20-amzn2-GROUP-PROD-20260403220337-AMI (Amazon Linux 2, x86_64)
     // t3.medium (4GB RAM) required for YouTrack 2026.1 - t3.small caused OOM errors
 
-    // Select ONE specific subnet to avoid AZ ambiguity
-    // Take the first PRIVATE_ISOLATED subnet available in the VPC
-    const selectedSubnets = sharedVpc.vpc.selectSubnets({
+    // Select PRIVATE_ISOLATED subnets
+    // CDK's ec2.Instance construct resolves to a specific subnet/AZ at synthesis time
+    // We let CDK pick the first available PRIVATE_ISOLATED subnet
+    const subnets = sharedVpc.vpc.selectSubnets({
       subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
-      onePerAz: true,  // Get one subnet per AZ
     });
-
-    // Use the first subnet's AZ explicitly
-    const targetAz = availabilityZone || selectedSubnets.subnets[0].availabilityZone;
 
     this.instance = new ec2.Instance(this, 'YouTrackInstance', {
       instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MEDIUM),
@@ -194,10 +185,9 @@ export class YouTrackStack extends cdk.Stack {
       }),
       vpc: sharedVpc.vpc,
       vpcSubnets: {
-        subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
-        availabilityZones: [targetAz],  // Filter to match the target AZ
+        subnets: subnets.subnets,
       },
-      availabilityZone: targetAz,
+      // Do not specify availabilityZone - CDK will pick subnet's AZ automatically
       securityGroup: securityGroup,
       role: instanceRole,
       userData: userData,
@@ -208,7 +198,7 @@ export class YouTrackStack extends cdk.Stack {
           volume: ec2.BlockDeviceVolume.ebs(30, {
             volumeType: ec2.EbsDeviceVolumeType.GP3,
             encrypted: true,
-            kmsKey: cicdKey,
+            kmsKey: appKey,
           }),
         },
       ],
@@ -222,7 +212,7 @@ export class YouTrackStack extends cdk.Stack {
       size: cdk.Size.gibibytes(50),  // Fresh 50GB volume
       volumeType: ec2.EbsDeviceVolumeType.GP3,
       encrypted: true,
-      encryptionKey: cicdKey,  // Use customer-managed key
+      encryptionKey: appKey,  // Use customer-managed key
       removalPolicy: cdk.RemovalPolicy.SNAPSHOT,
     });
 
@@ -265,12 +255,12 @@ export class YouTrackStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, 'KmsKeyId', {
-      value: cicdKey.keyId,
+      value: appKey.keyId,
       description: 'KMS Key ID for EBS encryption',
     });
 
     new cdk.CfnOutput(this, 'KmsKeyArn', {
-      value: cicdKey.keyArn,
+      value: appKey.keyArn,
       description: 'KMS Key ARN for EBS encryption',
     });
   }
