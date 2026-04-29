@@ -1,13 +1,12 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as scheduler from 'aws-cdk-lib/aws-scheduler';
-import * as targets from 'aws-cdk-lib/aws-scheduler-targets';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as dlm from 'aws-cdk-lib/aws-dlm';
-import * as cr from 'aws-cdk-lib/custom-resources';
 
 export interface AutomationStackProps extends cdk.StackProps {
-  // No instance ID needed - will be looked up by tag at deploy time
+  // Instance ID must be provided (CustomResource not available due to Lambda SCP)
+  readonly instanceId: string;
 }
 
 export class AutomationStack extends cdk.Stack {
@@ -21,40 +20,10 @@ export class AutomationStack extends cdk.Stack {
     cdk.Tags.of(this).add('Owner', 'a2i5giv');
     cdk.Tags.of(this).add('Purpose', 'Automation');
 
-    // Look up YouTrack instance ID by tag at deploy time
-    // This avoids cross-stack reference that prevents instance replacement
-    const instanceLookup = new cr.AwsCustomResource(this, 'YouTrackInstanceLookup', {
-      onUpdate: {
-        service: 'EC2',
-        action: 'describeInstances',
-        parameters: {
-          Filters: [
-            {
-              Name: 'tag:Project',
-              Values: ['YouTrack'],
-            },
-            {
-              Name: 'tag:aws:cloudformation:stack-name',
-              Values: ['YouTrackStack-Local'],
-            },
-            {
-              Name: 'instance-state-name',
-              Values: ['running', 'stopped'],
-            },
-          ],
-        },
-        physicalResourceId: cr.PhysicalResourceId.of('youtrack-instance-lookup'),
-        outputPaths: ['Reservations.0.Instances.0.InstanceId'],
-      },
-      policy: cr.AwsCustomResourcePolicy.fromStatements([
-        new iam.PolicyStatement({
-          actions: ['ec2:DescribeInstances'],
-          resources: ['*'],
-        }),
-      ]),
-    });
-
-    const instanceId = instanceLookup.getResponseField('Reservations.0.Instances.0.InstanceId');
+    // Use provided instance ID
+    // Note: CustomResource lookup not available due to One.Cloud Lambda SCP restrictions
+    // Instance ID must be updated manually if instance is replaced
+    const instanceId = props.instanceId;
 
     // IAM role for Start Schedule
     const startRole = new iam.Role(this, 'YouTrackStartRole', {
@@ -92,11 +61,11 @@ export class AutomationStack extends cdk.Stack {
       },
     }));
 
-    // Start schedule: Monday-Friday at 07:00 UTC (7 AM WET / 8 AM WEST)
+    // Start schedule: Monday-Friday at 08:00 UTC (8 AM WET / 9 AM WEST)
     const startSchedule = new scheduler.CfnSchedule(this, 'YouTrackStartSchedule', {
       name: 'youtrack-start-schedule',
-      description: 'Start YouTrack EC2 instance Mon-Fri at 7 AM UTC',
-      scheduleExpression: 'cron(0 7 ? * MON-FRI *)',
+      description: 'Start YouTrack EC2 instance Mon-Fri at 8 AM UTC',
+      scheduleExpression: 'cron(0 8 ? * MON-FRI *)',
       scheduleExpressionTimezone: 'UTC',
       flexibleTimeWindow: {
         mode: 'OFF',
@@ -179,7 +148,7 @@ export class AutomationStack extends cdk.Stack {
             name: 'Weekly Friday Backup',
             copyTags: true,
             createRule: {
-              cronExpression: 'cron(0 18 ? * FRI *)',
+              cronExpression: 'cron(30 19 ? * FRI *)',
             },
             retainRule: {
               count: 4,
@@ -199,129 +168,9 @@ export class AutomationStack extends cdk.Stack {
       },
     });
 
-    // ECR Lifecycle Policy for YouTrack image cleanup
-    // Using AwsCustomResource because the repository exists and we can't import it with lifecycle rules
-    const ecrLifecyclePolicy = new cr.AwsCustomResource(this, 'YouTrackEcrLifecyclePolicy', {
-      onCreate: {
-        service: 'ECR',
-        action: 'putLifecyclePolicy',
-        parameters: {
-          repositoryName: 'youtrack',
-          lifecyclePolicyText: JSON.stringify({
-            rules: [
-              {
-                rulePriority: 1,
-                description: 'Keep latest 5 tagged images',
-                selection: {
-                  tagStatus: 'tagged',
-                  countType: 'imageCountMoreThan',
-                  countNumber: 5,
-                },
-                action: {
-                  type: 'expire',
-                },
-              },
-              {
-                rulePriority: 2,
-                description: 'Remove tagged images older than 30 days',
-                selection: {
-                  tagStatus: 'tagged',
-                  countType: 'sinceImagePushed',
-                  countUnit: 'days',
-                  countNumber: 30,
-                },
-                action: {
-                  type: 'expire',
-                },
-              },
-              {
-                rulePriority: 3,
-                description: 'Remove untagged images older than 7 days',
-                selection: {
-                  tagStatus: 'untagged',
-                  countType: 'sinceImagePushed',
-                  countUnit: 'days',
-                  countNumber: 7,
-                },
-                action: {
-                  type: 'expire',
-                },
-              },
-            ],
-          }),
-        },
-        physicalResourceId: cr.PhysicalResourceId.of('youtrack-lifecycle-policy'),
-      },
-      onUpdate: {
-        service: 'ECR',
-        action: 'putLifecyclePolicy',
-        parameters: {
-          repositoryName: 'youtrack',
-          lifecyclePolicyText: JSON.stringify({
-            rules: [
-              {
-                rulePriority: 1,
-                description: 'Keep latest 5 tagged images',
-                selection: {
-                  tagStatus: 'tagged',
-                  countType: 'imageCountMoreThan',
-                  countNumber: 5,
-                },
-                action: {
-                  type: 'expire',
-                },
-              },
-              {
-                rulePriority: 2,
-                description: 'Remove tagged images older than 30 days',
-                selection: {
-                  tagStatus: 'tagged',
-                  countType: 'sinceImagePushed',
-                  countUnit: 'days',
-                  countNumber: 30,
-                },
-                action: {
-                  type: 'expire',
-                },
-              },
-              {
-                rulePriority: 3,
-                description: 'Remove untagged images older than 7 days',
-                selection: {
-                  tagStatus: 'untagged',
-                  countType: 'sinceImagePushed',
-                  countUnit: 'days',
-                  countNumber: 7,
-                },
-                action: {
-                  type: 'expire',
-                },
-              },
-            ],
-          }),
-        },
-        physicalResourceId: cr.PhysicalResourceId.of('youtrack-lifecycle-policy'),
-      },
-      onDelete: {
-        service: 'ECR',
-        action: 'deleteLifecyclePolicy',
-        parameters: {
-          repositoryName: 'youtrack',
-        },
-      },
-      policy: cr.AwsCustomResourcePolicy.fromStatements([
-        new iam.PolicyStatement({
-          actions: [
-            'ecr:PutLifecyclePolicy',
-            'ecr:DeleteLifecyclePolicy',
-            'ecr:GetLifecyclePolicy',
-          ],
-          resources: [
-            `arn:aws:ecr:${this.region}:${this.account}:repository/youtrack`,
-          ],
-        }),
-      ]),
-    });
+    // Note: ECR Lifecycle Policy cannot be managed by CDK due to Lambda SCP restrictions
+    // To manage ECR lifecycle policy manually, use AWS CLI:
+    // aws ecr put-lifecycle-policy --repository-name youtrack --lifecycle-policy-text file://ecr-lifecycle-policy.json --region eu-west-1
 
     // Stack outputs
     new cdk.CfnOutput(this, 'StartScheduleArn', {
@@ -340,23 +189,23 @@ export class AutomationStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, 'ScheduleSummary', {
-      value: 'Mon-Fri: Start at 07:00 UTC, Stop at 19:00 UTC',
+      value: 'Mon-Fri: Start at 08:00 UTC, Stop at 19:00 UTC',
       description: 'Schedule summary',
     });
 
     new cdk.CfnOutput(this, 'BackupSummary', {
-      value: 'Weekly snapshots on Friday at 18:00 UTC, retaining 4 snapshots',
+      value: 'Weekly snapshots on Friday at 19:30 UTC, retaining 4 snapshots',
       description: 'Backup policy summary',
     });
 
-    new cdk.CfnOutput(this, 'EcrRepositoryName', {
-      value: 'youtrack',
-      description: 'YouTrack ECR repository name',
+    new cdk.CfnOutput(this, 'InstanceId', {
+      value: instanceId,
+      description: 'YouTrack EC2 instance ID',
     });
 
-    new cdk.CfnOutput(this, 'EcrLifecycleSummary', {
-      value: 'Keep latest 5 tagged images OR images <30 days, remove untagged >7 days',
-      description: 'ECR lifecycle policy summary',
+    new cdk.CfnOutput(this, 'Note', {
+      value: 'ECR lifecycle policy must be managed manually via AWS CLI due to Lambda SCP restrictions',
+      description: 'ECR lifecycle note',
     });
   }
 }

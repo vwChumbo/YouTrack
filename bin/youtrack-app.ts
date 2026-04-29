@@ -18,5 +18,7 @@ new AutomationStack(app, 'AutomationStack-Local', {
     account: '640664844884',
     region: 'eu-west-1'
   },
-  // Instance ID looked up by tag at deploy time - no cross-stack reference
+  // Instance ID hardcoded due to Lambda SCP restrictions (no CustomResource)
+  // Update this if instance is replaced
+  instanceId: 'i-0535d4cb73b266680',
 });

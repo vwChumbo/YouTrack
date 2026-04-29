@@ -3,6 +3,7 @@ import { Construct } from 'constructs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as kms from 'aws-cdk-lib/aws-kms';
+import * as logs from 'aws-cdk-lib/aws-logs';
 import { SharedVpc } from '@vwg-community/vws-cdk';
 
 export interface YouTrackStackProps extends cdk.StackProps {
@@ -40,6 +41,36 @@ export class YouTrackStack extends cdk.Stack {
     });
 
     ebsKmsKey.addAlias('alias/youtrack-ebs-encryption');
+
+    // Customer-managed KMS key for CloudWatch Logs encryption
+    const logsKmsKey = new kms.Key(this, 'YouTrackLogsKey', {
+      description: 'Customer-managed key for YouTrack CloudWatch Logs encryption',
+      enableKeyRotation: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    logsKmsKey.addAlias('alias/youtrack-logs-encryption');
+
+    // Grant CloudWatch Logs service access
+    logsKmsKey.addToResourcePolicy(new iam.PolicyStatement({
+      sid: 'Allow CloudWatch Logs to use the key',
+      principals: [new iam.ServicePrincipal('logs.amazonaws.com')],
+      actions: [
+        'kms:Decrypt',
+        'kms:Encrypt',
+        'kms:DescribeKey',
+        'kms:GenerateDataKey',
+      ],
+      resources: ['*'],
+    }));
+
+    // CloudWatch log group for SSM Session Manager logs
+    const ssmLogGroup = new logs.LogGroup(this, 'SsmSessionLogs', {
+      logGroupName: '/aws/ssm/YouTrack',
+      encryptionKey: logsKmsKey,
+      retention: logs.RetentionDays.ONE_YEAR,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
 
     // Grant EC2 service access for volume encryption
     ebsKmsKey.addToResourcePolicy(new iam.PolicyStatement({
@@ -112,6 +143,18 @@ export class YouTrackStack extends cdk.Stack {
       resources: ['*'], // GetAuthorizationToken requires '*'
     }));
 
+    // Add CloudWatch Logs permissions
+    instanceRole.addToPolicy(new iam.PolicyStatement({
+      actions: [
+        'logs:CreateLogStream',
+        'logs:PutLogEvents',
+      ],
+      resources: [ssmLogGroup.logGroupArn],
+    }));
+
+    // Grant instance role permission to use logs KMS key
+    logsKmsKey.grantEncryptDecrypt(instanceRole);
+
     // UserData script to install Docker and run YouTrack
     const userData = ec2.UserData.forLinux();
     userData.addCommands(
@@ -152,6 +195,9 @@ export class YouTrackStack extends cdk.Stack {
       '# Mount the volume',
       'mount -a',
       '',
+      '# Create subdirectories for all 4 YouTrack volumes',
+      'mkdir -p /var/youtrack-data/{data,conf,logs,backups}',
+      '',
       '# Set ownership and permissions for YouTrack container (UID 13001)',
       'chown -R 13001:13001 /var/youtrack-data',
       'chmod -R 755 /var/youtrack-data',
@@ -161,11 +207,20 @@ export class YouTrackStack extends cdk.Stack {
       '  docker login --username AWS --password-stdin \\',
       '  640664844884.dkr.ecr.eu-west-1.amazonaws.com',
       '',
-      '# Run YouTrack container from ECR',
+      '# Run YouTrack container from ECR with all 4 volume mounts',
       'docker run -d --name youtrack --restart=always \\',
       '  -p 8080:8080 \\',
-      '  -v /var/youtrack-data:/opt/youtrack/data \\',
+      '  -v /var/youtrack-data/data:/opt/youtrack/data \\',
+      '  -v /var/youtrack-data/conf:/opt/youtrack/conf \\',
+      '  -v /var/youtrack-data/logs:/opt/youtrack/logs \\',
+      '  -v /var/youtrack-data/backups:/opt/youtrack/backups \\',
       '  640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:2026.1.12458',
+      '',
+      '# Setup YouTrack internal backup cron job (daily at 2AM UTC)',
+      'cat > /etc/cron.d/youtrack-backup << EOF',
+      '0 2 * * * root docker exec youtrack java -jar /opt/youtrack/lib/hub.jar backup',
+      'EOF',
+      'chmod 0644 /etc/cron.d/youtrack-backup',
       '',
       '# Signal completion',
       'echo "YouTrack deployment complete at $(date)" > /var/log/youtrack-setup.log'
@@ -213,14 +268,12 @@ export class YouTrackStack extends cdk.Stack {
       ],
     });
 
-    // Create separate EBS volume for YouTrack data from pre-deployment snapshot
+    // Create separate EBS volume for YouTrack data
     // This allows clean backups via DLM snapshots and data persistence across instance replacements
-    // NOTE: Volume recreated from snapshot snap-07f8ac4cbc445e5e6 to enable customer-managed KMS encryption
-    // (AWS does not allow in-place encryption changes on existing volumes)
     const dataVolume = new ec2.Volume(this, 'YouTrackDataVolumeEncrypted', {
       // Use instance's AZ to ensure volume and instance are co-located
       availabilityZone: this.instance.instanceAvailabilityZone,
-      snapshotId: 'snap-07f8ac4cbc445e5e6',  // Pre-deployment snapshot from 2026-04-27
+      size: cdk.Size.gibibytes(50),  // Fresh 50GB volume
       volumeType: ec2.EbsDeviceVolumeType.GP3,
       encrypted: true,
       encryptionKey: ebsKmsKey,  // Use customer-managed key
