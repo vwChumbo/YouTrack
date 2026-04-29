@@ -2,9 +2,8 @@ import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as iam from 'aws-cdk-lib/aws-iam';
-import * as kms from 'aws-cdk-lib/aws-kms';
 import * as logs from 'aws-cdk-lib/aws-logs';
-import { SharedVpc } from '@vwg-community/vws-cdk';
+import { SharedVpc, KeyStack, KeyPurpose } from '@vwg-community/vws-cdk';
 
 export interface YouTrackStackProps extends cdk.StackProps {
   /**
@@ -33,69 +32,16 @@ export class YouTrackStack extends cdk.Stack {
     // Import Shared VPC (required by SCP)
     const sharedVpc = new SharedVpc(this, 'SharedVpc');
 
-    // Create customer-managed KMS key for EBS encryption
-    const ebsKmsKey = new kms.Key(this, 'YouTrackEbsKey', {
-      description: 'Customer-managed key for YouTrack EBS encryption (VW-controlled)',
-      enableKeyRotation: true,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-    });
-
-    ebsKmsKey.addAlias('alias/youtrack-ebs-encryption');
-
-    // Customer-managed KMS key for CloudWatch Logs encryption
-    const logsKmsKey = new kms.Key(this, 'YouTrackLogsKey', {
-      description: 'Customer-managed key for YouTrack CloudWatch Logs encryption',
-      enableKeyRotation: true,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-    });
-
-    logsKmsKey.addAlias('alias/youtrack-logs-encryption');
-
-    // Grant CloudWatch Logs service access
-    logsKmsKey.addToResourcePolicy(new iam.PolicyStatement({
-      sid: 'Allow CloudWatch Logs to use the key',
-      principals: [new iam.ServicePrincipal('logs.amazonaws.com')],
-      actions: [
-        'kms:Decrypt',
-        'kms:Encrypt',
-        'kms:DescribeKey',
-        'kms:GenerateDataKey',
-      ],
-      resources: ['*'],
-    }));
+    // Lookup shared CICD KMS key from KeyStack
+    const cicdKey = KeyStack.getKeyFromLookup(this, 'CicdKeyLookup', KeyPurpose.CICD);
 
     // CloudWatch log group for SSM Session Manager logs
     const ssmLogGroup = new logs.LogGroup(this, 'SsmSessionLogs', {
       logGroupName: '/aws/ssm/YouTrack',
-      encryptionKey: logsKmsKey,
+      encryptionKey: cicdKey,
       retention: logs.RetentionDays.ONE_YEAR,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
-
-    // Grant EC2 service access for volume encryption
-    ebsKmsKey.addToResourcePolicy(new iam.PolicyStatement({
-      sid: 'Allow EC2 to use the key for volume encryption',
-      principals: [new iam.ServicePrincipal('ec2.amazonaws.com')],
-      actions: [
-        'kms:Decrypt',
-        'kms:DescribeKey',
-        'kms:CreateGrant',
-      ],
-      resources: ['*'],
-    }));
-
-    // Grant DLM service access for snapshot encryption
-    ebsKmsKey.addToResourcePolicy(new iam.PolicyStatement({
-      sid: 'Allow DLM to use the key for snapshots',
-      principals: [new iam.ServicePrincipal('dlm.amazonaws.com')],
-      actions: [
-        'kms:Decrypt',
-        'kms:Encrypt',
-        'kms:DescribeKey',
-        'kms:CreateGrant',
-      ],
-      resources: ['*'],
-    }));
 
     // Security group for YouTrack EC2 instance
     const securityGroup = new ec2.SecurityGroup(this, 'YouTrackSecurityGroup', {
@@ -153,7 +99,7 @@ export class YouTrackStack extends cdk.Stack {
     }));
 
     // Grant instance role permission to use logs KMS key
-    logsKmsKey.grantEncryptDecrypt(instanceRole);
+    cicdKey.grantEncryptDecrypt(instanceRole);
 
     // UserData script to install Docker and run YouTrack
     const userData = ec2.UserData.forLinux();
@@ -262,7 +208,7 @@ export class YouTrackStack extends cdk.Stack {
           volume: ec2.BlockDeviceVolume.ebs(30, {
             volumeType: ec2.EbsDeviceVolumeType.GP3,
             encrypted: true,
-            kmsKey: ebsKmsKey,
+            kmsKey: cicdKey,
           }),
         },
       ],
@@ -276,7 +222,7 @@ export class YouTrackStack extends cdk.Stack {
       size: cdk.Size.gibibytes(50),  // Fresh 50GB volume
       volumeType: ec2.EbsDeviceVolumeType.GP3,
       encrypted: true,
-      encryptionKey: ebsKmsKey,  // Use customer-managed key
+      encryptionKey: cicdKey,  // Use customer-managed key
       removalPolicy: cdk.RemovalPolicy.SNAPSHOT,
     });
 
@@ -319,12 +265,12 @@ export class YouTrackStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, 'KmsKeyId', {
-      value: ebsKmsKey.keyId,
+      value: cicdKey.keyId,
       description: 'KMS Key ID for EBS encryption',
     });
 
     new cdk.CfnOutput(this, 'KmsKeyArn', {
-      value: ebsKmsKey.keyArn,
+      value: cicdKey.keyArn,
       description: 'KMS Key ARN for EBS encryption',
     });
   }
