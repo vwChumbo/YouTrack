@@ -27,19 +27,24 @@ The infrastructure is deployed manually from a local development workstation usi
 
 ### CDK Deployment
 
+**Deploy account setup stacks (one-time):**
+```bash
+cdk deploy KeyStack-eu-west-1 BootstrapStack-eu-west-1
+```
+
+**Deploy application stacks:**
+```bash
+cdk deploy YouTrackStack AutomationStack
+```
+
 **Deploy all stacks:**
 ```bash
-cdk deploy EcrStack-Local YouTrackStack-Local AutomationStack-Local
+NODE_TLS_REJECT_UNAUTHORIZED=0 cdk deploy --all
 ```
 
 **Deploy individual stack:**
 ```bash
-cdk deploy YouTrackStack-Local
-```
-
-**If SSL/CA certificate errors occur:**
-```bash
-NODE_TLS_REJECT_UNAUTHORIZED=0 cdk deploy EcrStack-Local YouTrackStack-Local AutomationStack-Local
+cdk deploy YouTrackStack
 ```
 
 **Note:** SSL certificate validation issues may occur due to Zscaler proxy. Use the `NODE_TLS_REJECT_UNAUTHORIZED=0` workaround if you encounter certificate errors.
@@ -59,11 +64,13 @@ npm run watch
 
 ### Emergency Manual Deployment
 
-**Destroy stack (use with extreme caution):**
+**Destroy application stacks (use with extreme caution):**
 ```bash
-cdk destroy YouTrackStack-Local
+cdk destroy AutomationStack
+cdk destroy YouTrackStack
 
-# Note: EcrStack-Local should NOT be destroyed (retains images)
+# Note: Never destroy KeyStack or BootstrapStack without understanding the impact
+# These stacks provide account-level infrastructure (KMS keys, CDK bootstrap)
 ```
 
 ## YouTrack Image Management
@@ -96,17 +103,17 @@ docker push 640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:2026.1.12458
 aws cloudformation describe-stacks --stack-name YouTrackStack --region eu-west-1 --query 'Stacks[0].Outputs'
 
 # Check instance state
-aws ec2 describe-instances --instance-ids i-0535d4cb73b266680 --region eu-west-1 \
+aws ec2 describe-instances --instance-ids i-07f47d6f9108e5bb6 --region eu-west-1 \
   --query 'Reservations[0].Instances[0].State.Name'
 
 # Start instance manually if needed
-aws ec2 start-instances --instance-ids i-0535d4cb73b266680 --region eu-west-1
+aws ec2 start-instances --instance-ids i-07f47d6f9108e5bb6 --region eu-west-1
 
 # Connect via SSM Session Manager
-aws ssm start-session --target i-0535d4cb73b266680 --region eu-west-1
+aws ssm start-session --target i-07f47d6f9108e5bb6 --region eu-west-1
 
 # Port forwarding to access YouTrack UI (use different local port if 8080 busy)
-aws ssm start-session --target i-0535d4cb73b266680 --region eu-west-1 \
+aws ssm start-session --target i-07f47d6f9108e5bb6 --region eu-west-1 \
   --document-name AWS-StartPortForwardingSession \
   --parameters '{"portNumber":["8080"],"localPortNumber":["8484"]}'
 ```
@@ -117,16 +124,28 @@ Then access YouTrack at `http://localhost:8484` in browser.
 
 ### Stack Structure
 
-The infrastructure consists of two CDK stacks deployed manually from the local workstation:
+The infrastructure follows the One.Cloud account-setup pattern with compliant bootstrap and customer-managed encryption:
 
-**1. EcrStack** (`lib/ecr-stack.ts`) - Deployed locally
-- ECR repository for YouTrack Docker images
-- Lifecycle policy: Keep last 3 tagged images
-- Image scanning on push enabled
-- Customer-managed KMS key for encryption
+**Account Setup Stacks (Generic, Account-Level):**
 
-**2. YouTrackStack** (`lib/youtrack-stack.ts`) - Deployed locally
-- EC2 t3.medium instance in eu-west-1a (4GB RAM required - t3.small causes OOM)
+**1. KeyStack-eu-west-1** (from `@vwg-community/vws-cdk`)
+- Customer-managed KMS key (200688f6-a9eb-4c64-a0d7-940b143496cd)
+- Single key for all resources (ONE_FOR_ALL_STRATEGY)
+- Automatic key rotation enabled (annual)
+- Key purpose: CICD (bootstrap S3) and APP_PROD (application resources)
+- Aliases: `alias/cicd-key` and `alias/app-prod-key`
+
+**2. BootstrapStack-eu-west-1** (`lib/stacks/bootstrap-stack.ts`)
+- CDK bootstrap infrastructure with compliance controls
+- Scoped IAM policy replacing AdministratorAccess
+- Permissions: cloudformation, cloudwatch, dlm, ec2, ecr, events, iam, kms, lambda, logs, s3, scheduler, serverlessrepo, ssm
+- Bootstrap S3 bucket encrypted with customer-managed KMS key
+- Includes CDK bootstrap template with custom parameters
+
+**Application Stacks (YouTrack-Specific):**
+
+**3. YouTrackStack** (`lib/youtrack-stack.ts`)
+- EC2 t3.medium instance (4GB RAM required - t3.small causes OOM)
 - Amazon Linux 2 from image factory (ami-0b434d403262ef6c7)
 - Docker container running YouTrack from ECR
 - Separate 50GB gp3 EBS data volume mounted at `/var/youtrack-data`
@@ -134,11 +153,12 @@ The infrastructure consists of two CDK stacks deployed manually from the local w
 - Private IP only, port 8080
 - SSM Session Manager access (no SSH)
 - IMDSv2 enforced (requireImdsv2: true)
-- Root and data volumes encrypted with customer-managed KMS key
+- Root and data volumes encrypted with customer-managed KMS key (APP_PROD)
+- CloudWatch Logs encrypted with customer-managed KMS key (APP_PROD)
 
-**3. AutomationStack** (`lib/automation-stack.ts`) - Deployed locally
-- EventBridge Scheduler for EC2 start/stop (Mon-Fri 7AM-7PM UTC)
-- DLM lifecycle policy for weekly EBS snapshots (Friday 6PM UTC, 4 weeks retention)
+**4. AutomationStack** (`lib/automation-stack.ts`)
+- EventBridge Scheduler for EC2 start/stop (Mon-Fri 07:00-19:00 UTC)
+- DLM lifecycle policy for weekly EBS snapshots (Friday 19:30 UTC, 4 weeks retention)
 
 **Key Components:**
 - `SharedVpc`: Imported from `@vwg-community/vws-cdk` (required by SCP)
@@ -177,7 +197,7 @@ Old test code from initial CDK exploration is preserved in `deprecated/cdk-test/
 **Purpose:** Cost optimization - instance only runs during business hours
 
 **Schedule:**
-- **Start**: Monday-Friday at 08:00 UTC (8 AM WET / 9 AM WEST)
+- **Start**: Monday-Friday at 07:00 UTC (7 AM WET / 8 AM WEST)
 - **Stop**: Monday-Friday at 19:00 UTC (7 PM WET / 8 PM WEST)
 
 **Note:** Uses fixed UTC times. Approximately 1 hour shift during DST transitions (WET/WEST) is acceptable for dev environment.
@@ -227,15 +247,28 @@ aws ec2 create-volume --snapshot-id snap-xxxxx --availability-zone eu-west-1a \
 
 ### Encryption at Rest
 
+**Customer-Managed KMS Key:**
+- Key ID: 200688f6-a9eb-4c64-a0d7-940b143496cd
+- Aliases: `alias/cicd-key` (bootstrap), `alias/app-prod-key` (application)
+- Key rotation: Enabled (annual automatic rotation)
+- Strategy: ONE_FOR_ALL_STRATEGY (single key for all resources)
+
 **EBS Volumes:**
-- Root volume (/dev/xvda, 30GB): Encrypted with customer-managed KMS key
-- Data volume (/dev/sdf, 50GB): Encrypted with customer-managed KMS key
-- KMS key rotation: Enabled (annual automatic rotation)
-- KMS key alias: `alias/youtrack-ebs-encryption`
+- Root volume (/dev/xvda, 30GB): Encrypted with customer-managed KMS key (APP_PROD)
+- Data volume (/dev/sdf, 50GB): Encrypted with customer-managed KMS key (APP_PROD)
+
+**S3 Bootstrap Bucket:**
+- Bucket: cdk-hnb659fds-assets-640664844884-eu-west-1
+- Encryption: Customer-managed KMS key (CICD)
+
+**CloudWatch Logs:**
+- Log Group: /aws/ssm/YouTrack
+- Encryption: Customer-managed KMS key (APP_PROD)
 
 **ECR Repository:**
-- Encryption: AES-256 with customer-managed KMS key
-- KMS key alias: `alias/youtrack-ecr-encryption`
+- Repository: youtrack
+- Encryption: AES-256 (AWS-managed, cannot be changed after creation)
+- Lifecycle Policy: Keep last 3 tagged images, remove untagged after 7 days
 
 **EBS Snapshots:**
 - Inherit encryption from source volume (customer-managed KMS key)
@@ -301,6 +334,38 @@ aws ec2 create-volume --snapshot-id snap-xxxxx --availability-zone eu-west-1a \
 
 **Backup Tags:**
 - Backup: weekly-dlm (on data volume and snapshots)
+
+### Compliance Findings Resolution
+
+**Deployment Date:** 2026-04-30
+
+All One.Cloud compliance findings have been resolved by adopting the account-setup template pattern:
+
+**✅ IAM AdministratorAccess (eu-west-1):**
+- **Finding ID**: 42b336cc-dec5-4487-bf65-bff12953eb95
+- **Status**: RESOLVED
+- **Solution**: Created BootstrapStack with scoped IAM policy `CdkBootstrap-hnb659fds-eu-west-1`
+- **Permissions**: cloudformation, cloudwatch, dlm, ec2, ecr, events, iam, kms, lambda, logs, s3, scheduler, serverlessrepo, ssm
+- **Verification**: `aws iam list-attached-role-policies --role-name cdk-hnb659fds-cfn-exec-role-640664844884-eu-west-1 --region eu-west-1`
+
+**⚠️ IAM AdministratorAccess (us-east-1):**
+- **Finding ID**: 40a19828-e06c-4f62-b5ae-1443ca5e82f0
+- **Status**: SKIPPED (SCP restrictions prevent us-east-1 operations)
+- **Note**: us-east-1 bootstrap not deployed due to S3 bucket deletion restrictions
+
+**✅ S3 AWS-managed KMS Key:**
+- **Finding ID**: 7bd21bbc-6f36-4b29-bd40-0e2212387904
+- **Status**: RESOLVED
+- **Solution**: Bootstrap S3 bucket now uses customer-managed KMS key (200688f6)
+- **Bucket**: cdk-hnb659fds-assets-640664844884-eu-west-1
+- **Verification**: `aws s3api get-bucket-encryption --bucket cdk-hnb659fds-assets-640664844884-eu-west-1 --region eu-west-1`
+
+**✅ ECR Lifecycle Policy Missing:**
+- **Finding ID**: 53736dfe-c67b-4e6c-bafc-c489ba20cc31
+- **Status**: RESOLVED
+- **Solution**: Applied lifecycle policy via AWS CLI (ecr-lifecycle-policy.json)
+- **Policy**: Keep last 3 tagged images (2026*), remove untagged after 7 days
+- **Verification**: `aws ecr get-lifecycle-policy --repository-name youtrack --region eu-west-1`
 
 ### Known Security Findings
 
@@ -382,30 +447,32 @@ aws ec2 create-volume --snapshot-id snap-xxxxx --availability-zone eu-west-1a \
 
 ## Current Deployment
 
-**Migration Status:** Infrastructure migrated from CodeCommit to GitHub on 2026-04-27
+**Migration Status:** 
+- 2026-04-27: Infrastructure migrated from CodeCommit to GitHub
+- 2026-04-30: Adopted account-setup pattern for compliance
 
 **Deployment Method:** Manual CDK deployment from local workstation
-- Application Stacks: `EcrStack-Local`, `YouTrackStack-Local`, `AutomationStack-Local`
+- Account Setup: `KeyStack-eu-west-1`, `BootstrapStack-eu-west-1`
+- Application Stacks: `YouTrackStack`, `AutomationStack`
 - Repository: GitHub `https://github.com/vwChumbo/YouTrack.git`
 
 **Compliance Note:** GitHub is used as the source code provider to comply with One.Cloud regulations. CodeCommit is not permitted for source code storage.
 
-**Instance Details** (as of 2026-04-29):
-- Stack: YouTrackStack-Local
-- Instance ID: i-0535d4cb73b266680
-- Private IP: 192.168.148.21
-- Access URL: http://192.168.148.21:8080 (via SSM port forwarding)
+**Instance Details** (as of 2026-04-30):
+- Stack: YouTrackStack
+- Instance ID: i-07f47d6f9108e5bb6
+- Private IP: 192.168.155.2
+- Access URL: http://192.168.155.2:8080 (via SSM port forwarding)
 - VPC ID: vpc-05b5078f709cfc904
-- Availability Zone: eu-west-1a
 - Region: eu-west-1
 - Account: 640664844884
 
 **Security Configuration:**
 - IMDSv2: Enforced (requireImdsv2: true)
-- Root Volume: 30GB gp3, encrypted with customer-managed KMS key
-- Data Volume: 50GB gp3, encrypted with customer-managed KMS key
-- EBS KMS Key Alias: alias/youtrack-ebs-encryption
-- Logs KMS Key Alias: alias/youtrack-logs-encryption
+- Root Volume: 30GB gp3, encrypted with customer-managed KMS key (APP_PROD)
+- Data Volume: 50GB gp3, encrypted with customer-managed KMS key (APP_PROD)
+- KMS Key ID: 200688f6-a9eb-4c64-a0d7-940b143496cd
+- KMS Key Aliases: alias/cicd-key, alias/app-prod-key
 - KMS Key Rotation: Enabled (annual automatic)
 
 **Data Volume:**
@@ -417,9 +484,9 @@ aws ec2 create-volume --snapshot-id snap-xxxxx --availability-zone eu-west-1a \
 - Encryption: Customer-managed KMS key
 
 **Instance Availability:**
-- **Business Hours**: Monday-Friday 8AM-7PM UTC (instance running)
-  - Winter (WET): 8AM-7PM Lisbon time
-  - Summer (WEST): 9AM-8PM Lisbon time (1 hour shift)
+- **Business Hours**: Monday-Friday 07:00-19:00 UTC (instance running)
+  - Winter (WET): 7AM-7PM Lisbon time
+  - Summer (WEST): 8AM-8PM Lisbon time (1 hour shift)
 - **Off Hours**: Instance automatically stopped (use manual start if needed)
 
 **Costs:**
@@ -427,7 +494,7 @@ aws ec2 create-volume --snapshot-id snap-xxxxx --availability-zone eu-west-1a \
 - EBS 50GB gp3: ~$4/month
 - EBS snapshots: ~$2/month (incremental, 4 weeks retention)
 - CloudWatch Logs: <$1/month (SSM session logs, 1-year retention)
-- KMS keys: $2/month (2 keys: EBS + Logs)
-- **Total: ~$15-16/month** (vs ~$36/month without automation)
+- KMS key: $1/month (single customer-managed key for all resources)
+- **Total: ~$14-15/month** (vs ~$36/month without automation)
 
 See `docs/youtrack-access.md` for detailed access instructions and maintenance procedures.
