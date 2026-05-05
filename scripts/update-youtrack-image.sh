@@ -102,7 +102,7 @@ restart_container_on_ec2() {
       \"docker pull ${ECR_REGISTRY}/${ECR_REPO}:latest\",
       \"docker stop ${CONTAINER_NAME} 2>/dev/null || true; docker rm ${CONTAINER_NAME} 2>/dev/null || true\",
       \"docker run -d --name ${CONTAINER_NAME} --restart=always -p 8080:8080 -v /var/youtrack-data/data:/opt/youtrack/data -v /var/youtrack-data/conf:/opt/youtrack/conf -v /var/youtrack-data/logs:/opt/youtrack/logs -v /var/youtrack-data/backups:/opt/youtrack/backups ${ECR_REGISTRY}/${ECR_REPO}:latest\",
-      \"docker ps --filter name=${CONTAINER_NAME} --format 'Running: {{.Image}} ({{.Status}})'\"
+      \"docker ps --filter name=${CONTAINER_NAME} --no-trunc\"
     ]" \
     --query 'Command.CommandId' \
     --output text)
