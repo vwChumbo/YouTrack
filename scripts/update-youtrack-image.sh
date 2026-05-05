@@ -194,8 +194,11 @@ pull_and_push_to_ecr() {
   fi
 
   echo "🔑 Logging in to ECR..."
-  aws ecr get-login-password --region "${REGION}" | \
-    docker login --username AWS --password-stdin "${ECR_REGISTRY}"
+  if ! aws ecr get-login-password --region "${REGION}" | \
+      docker login --username AWS --password-stdin "${ECR_REGISTRY}"; then
+    echo "❌ ECR login failed. Check your AWS credentials and region."
+    exit 1
+  fi
 
   echo "🏷️  Tagging for ECR..."
   docker tag "jetbrains/youtrack:${version}" "${ECR_REGISTRY}/${ECR_REPO}:${version}"
@@ -222,6 +225,11 @@ retag_as_latest_in_ecr() {
     --image-ids imageTag="${version}" \
     --query 'images[0].imageManifest' \
     --output text)
+
+  if [[ -z "$manifest" || "$manifest" == "None" ]]; then
+    echo "❌ Could not retrieve manifest for ${version} from ECR. Aborting retag."
+    exit 1
+  fi
 
   aws ecr put-image \
     --repository-name "${ECR_REPO}" \
