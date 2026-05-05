@@ -94,6 +94,11 @@ The script handles the entire workflow automatically:
 
 **IMPORTANT**: No code changes or CDK redeployments are needed for version upgrades. The CDK stack uses `:latest` from ECR, so only the script needs to run.
 
+**Dependencies for `--check-only` with Docker Hub comparison:**
+- `jq` — JSON parser for Docker Hub API response
+  - Install: `yum install jq` (RHEL/Amazon Linux) or `brew install jq` (macOS)
+  - Graceful fallback: if jq is missing, script shows ECR state only
+
 ### Accessing Running Instance
 
 **Note:** Instance runs on a schedule (Mon-Fri 8AM-7PM UTC). If instance is stopped, start it manually or wait for the scheduled start time.
