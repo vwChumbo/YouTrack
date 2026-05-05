@@ -75,24 +75,24 @@ cdk destroy YouTrackStack
 
 ## YouTrack Image Management
 
-### Pushing New Image to ECR
+### Upgrading YouTrack
 
-**One-time setup (run on local machine with Docker):**
+**Use the update script for version upgrades:**
 ```bash
-# Use the update script for new versions
-./scripts/update-youtrack-image.sh 2026.1.12458
+# Check current ECR state (read-only, no changes)
+./scripts/update-youtrack-image.sh --check-only
 
-# Or manually:
-docker pull jetbrains/youtrack:2026.1.12458
-aws ecr get-login-password --region eu-west-1 | \
-  docker login --username AWS --password-stdin \
-  640664844884.dkr.ecr.eu-west-1.amazonaws.com
-docker tag jetbrains/youtrack:2026.1.12458 \
-  640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:2026.1.12458
-docker push 640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:2026.1.12458
+# Full upgrade: pull from Docker Hub → push to ECR → retag latest → restart container via SSM
+./scripts/update-youtrack-image.sh <NEW_VERSION>
+# e.g. ./scripts/update-youtrack-image.sh 2026.2.1000
 ```
 
-**IMPORTANT**: Image push is one-time, NOT part of CDK deployment. After pushing the new image to ECR and retagging it as `:latest`, the next `cdk deploy YouTrackStack` will pull the updated image. No code changes required.
+The script handles the entire workflow automatically:
+1. Checks if the version already exists in ECR (skips pull/push if it does)
+2. Pushes the new image to ECR with a version tag and updates `latest`
+3. Restarts the container on the EC2 instance via SSM (no manual SSM session needed)
+
+**IMPORTANT**: No code changes or CDK redeployments are needed for version upgrades. The CDK stack uses `:latest` from ECR, so only the script needs to run.
 
 ### Accessing Running Instance
 

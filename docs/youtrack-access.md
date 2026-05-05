@@ -128,55 +128,54 @@ sudo systemctl enable docker
 
 ## Upgrading YouTrack
 
-### Option 1: Using the Update Script
+Use the update script to upgrade YouTrack. It handles ECR push and container restart automatically.
+
+### Using the update script (recommended)
 
 ```bash
-# On your local machine with Docker running
-./scripts/update-youtrack-image.sh 2026.2.XXXXX
+# Check current version in ECR
+./scripts/update-youtrack-image.sh --check-only
 
-# Then update lib/youtrack-stack.ts with new version
-# And redeploy: cdk deploy
+# Upgrade to a new version (pulls from Docker Hub, pushes to ECR, restarts container via SSM)
+./scripts/update-youtrack-image.sh <NEW_VERSION>
+# e.g. ./scripts/update-youtrack-image.sh 2026.2.1000
 ```
 
-### Option 2: Manual Upgrade
+The script will:
+1. Show current ECR state
+2. Check if the version already exists in ECR (skips pull if it does)
+3. Pull from Docker Hub → push to ECR with version tag + retag `latest`
+4. Restart the container on EC2 via SSM (no manual SSM session needed)
+5. Show final ECR state confirming the update
 
-**Push new image to ECR:**
+**Note:** Docker Hub may be blocked by the Zscaler proxy on the corporate network. Run the script from a machine with internet access if Docker Hub pulls fail.
+
+### Manual upgrade (if script is not available)
+
 ```bash
-# On your local machine
-docker pull jetbrains/youtrack:2026.2.XXXXX
+# 1. Push new image to ECR from a machine with Docker and internet access
+docker pull jetbrains/youtrack:<VERSION>
 aws ecr get-login-password --region eu-west-1 | \
-  docker login --username AWS --password-stdin \
-  640664844884.dkr.ecr.eu-west-1.amazonaws.com
-docker tag jetbrains/youtrack:2026.2.XXXXX \
-  640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:2026.2.XXXXX
-docker push 640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:2026.2.XXXXX
-```
+  docker login --username AWS --password-stdin 640664844884.dkr.ecr.eu-west-1.amazonaws.com
+docker tag jetbrains/youtrack:<VERSION> 640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:<VERSION>
+docker tag jetbrains/youtrack:<VERSION> 640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:latest
+docker push 640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:<VERSION>
+docker push 640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:latest
 
-**Update running instance without redeployment:**
-```bash
-# Connect via SSM
-aws ssm start-session --target <instance-id> --region eu-west-1
-
-# Stop and remove old container
-docker stop youtrack
-docker rm youtrack
-
-# Login to ECR
-aws ecr get-login-password --region eu-west-1 | \
-  docker login --username AWS --password-stdin \
-  640664844884.dkr.ecr.eu-west-1.amazonaws.com
-
-# Pull new image
-docker pull 640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:2026.2.XXXXX
-
-# Start new container
-docker run -d --name youtrack --restart=always \
+# 2. Restart container on EC2 via SSM session
+aws ssm start-session --target <INSTANCE_ID> --region eu-west-1
+# Then inside the session:
+aws ecr get-login-password --region eu-west-1 | docker login --username AWS --password-stdin 640664844884.dkr.ecr.eu-west-1.amazonaws.com
+docker pull 640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:latest
+docker stop youtrack && docker rm youtrack
+docker run -d --name youtrack --restart=always --user 13001:13001 \
   -p 8080:8080 \
-  -v /var/youtrack-data:/opt/youtrack/data \
-  640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:2026.2.XXXXX
+  -v /var/youtrack-data/data:/opt/youtrack/data \
+  -v /var/youtrack-data/conf:/opt/youtrack/conf \
+  -v /var/youtrack-data/logs:/opt/youtrack/logs \
+  -v /var/youtrack-data/backups:/opt/youtrack/backups \
+  640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:latest
 ```
-
-**Note:** Data persists in `/var/youtrack-data` across container updates.
 
 ## Current Configuration
 
