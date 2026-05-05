@@ -54,6 +54,33 @@ for tags, pushed, digest in data:
     echo "  latest digest: ${latest_digest}"
   fi
   echo "────────────────────────────────────────────────────────────"
+
+  # Docker Hub comparison
+  echo ""
+  echo "🐋 Docker Hub: jetbrains/youtrack"
+  echo "────────────────────────────────────────────────────────────"
+
+  local dockerhub_info exit_code
+  set +e  # Temporarily disable exit on error for optional Docker Hub check
+  dockerhub_info=$(get_dockerhub_latest)
+  exit_code=$?
+  set -e  # Re-enable exit on error
+
+  if [[ $exit_code -eq 0 ]]; then
+    IFS='|' read -r dh_tag dh_digest dh_date <<< "$dockerhub_info"
+    echo "  Latest version: ${dh_tag}"
+    echo "  Published: ${dh_date}"
+    echo "  Digest: ${dh_digest}"
+
+    echo ""
+    echo "💡 To upgrade to Docker Hub latest:"
+    echo "   ./scripts/update-youtrack-image.sh ${dh_tag}"
+  else
+    # Display error message from get_dockerhub_latest
+    echo "$dockerhub_info"
+  fi
+  echo "────────────────────────────────────────────────────────────"
+
   echo ""
 }
 
