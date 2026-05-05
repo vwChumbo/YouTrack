@@ -57,6 +57,40 @@ for tags, pushed, digest in data:
   echo ""
 }
 
+# Returns latest tag info from Docker Hub in format: tag|digest|date
+# Returns exit code 1 if jq missing or Docker Hub unreachable
+get_dockerhub_latest() {
+  # Check if jq is available
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "  ⚠️  jq not found. Install with: yum install jq"
+    return 1
+  fi
+
+  # Query Docker Hub API
+  local response
+  response=$(curl -s --max-time 10 \
+    "https://hub.docker.com/v2/repositories/jetbrains/youtrack/tags?page_size=100&ordering=-last_updated" \
+    2>/dev/null)
+
+  if [[ -z "$response" ]]; then
+    echo "  ⚠️  Could not reach Docker Hub (check: internet access, Zscaler proxy)"
+    return 1
+  fi
+
+  # Parse response with jq
+  local latest_tag latest_digest latest_date
+  latest_tag=$(echo "$response" | jq -r '.results[0].name' 2>/dev/null)
+  latest_digest=$(echo "$response" | jq -r '.results[0].digest' 2>/dev/null)
+  latest_date=$(echo "$response" | jq -r '.results[0].last_updated' 2>/dev/null)
+
+  if [[ -z "$latest_tag" || "$latest_tag" == "null" ]]; then
+    echo "  ⚠️  Could not parse Docker Hub response"
+    return 1
+  fi
+
+  echo "$latest_tag|$latest_digest|$latest_date"
+}
+
 # Returns instance ID from CloudFormation stack outputs.
 get_instance_id() {
   aws cloudformation describe-stacks \
