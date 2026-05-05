@@ -154,7 +154,7 @@ export class YouTrackStack extends cdk.Stack {
       '  -v /var/youtrack-data/conf:/opt/youtrack/conf \\',
       '  -v /var/youtrack-data/logs:/opt/youtrack/logs \\',
       '  -v /var/youtrack-data/backups:/opt/youtrack/backups \\',
-      '  640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:2026.1.12458',
+      '  640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:latest',
       '',
       '# Setup YouTrack internal backup cron job (daily at 2AM UTC)',
       'cat > /etc/cron.d/youtrack-backup << EOF',

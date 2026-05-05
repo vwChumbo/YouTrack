@@ -75,24 +75,29 @@ cdk destroy YouTrackStack
 
 ## YouTrack Image Management
 
-### Pushing New Image to ECR
+### Upgrading YouTrack
 
-**One-time setup (run on local machine with Docker):**
+**Use the update script for version upgrades:**
 ```bash
-# Use the update script for new versions
-./scripts/update-youtrack-image.sh 2026.1.12458
+# Check current ECR state (read-only, no changes)
+./scripts/update-youtrack-image.sh --check-only
 
-# Or manually:
-docker pull jetbrains/youtrack:2026.1.12458
-aws ecr get-login-password --region eu-west-1 | \
-  docker login --username AWS --password-stdin \
-  640664844884.dkr.ecr.eu-west-1.amazonaws.com
-docker tag jetbrains/youtrack:2026.1.12458 \
-  640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:2026.1.12458
-docker push 640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:2026.1.12458
+# Full upgrade: pull from Docker Hub → push to ECR → retag latest → restart container via SSM
+./scripts/update-youtrack-image.sh <NEW_VERSION>
+# e.g. ./scripts/update-youtrack-image.sh 2026.2.1000
 ```
 
-**IMPORTANT**: Image push is one-time, NOT part of CDK deployment. Update image in ECR first, then update version in `lib/youtrack-stack.ts`, commit the change, and deploy manually using `cdk deploy YouTrackStack-Local`.
+The script handles the entire workflow automatically:
+1. Checks if the version already exists in ECR (skips pull/push if it does)
+2. Pushes the new image to ECR with a version tag and updates `latest`
+3. Restarts the container on the EC2 instance via SSM (no manual SSM session needed)
+
+**IMPORTANT**: No code changes or CDK redeployments are needed for version upgrades. The CDK stack uses `:latest` from ECR, so only the script needs to run.
+
+**Dependencies for `--check-only` with Docker Hub comparison:**
+- `jq` — JSON parser for Docker Hub API response
+  - Install: `yum install jq` (RHEL/Amazon Linux) or `brew install jq` (macOS)
+  - Graceful fallback: if jq is missing, script shows ECR state only
 
 ### Accessing Running Instance
 
@@ -184,7 +189,7 @@ The infrastructure follows the One.Cloud account-setup pattern with compliant bo
 **Image Location:**
 - Registry: `640664844884.dkr.ecr.eu-west-1.amazonaws.com`
 - Repository: `youtrack`
-- Current Version: `2026.1.12458`
+- Tag: `:latest` (deployed version determined by ECR image tag, not code version)
 
 ### Deprecated Code
 
