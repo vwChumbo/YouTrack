@@ -1,7 +1,7 @@
 # YouTrack Access
 
-**YouTrack Version:** 2026.1.12458  
-**Image Location:** 640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:2026.1.12458
+**YouTrack Version:** Latest (see ECR tag)  
+**Image Location:** 640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:latest
 
 **Instance ID:** i-0f9fe3a681f4c1d5a  
 **Private IP:** 192.168.146.15  
@@ -182,7 +182,7 @@ docker run -d --name youtrack --restart=always \
 
 - **Image Registry:** AWS ECR (640664844884.dkr.ecr.eu-west-1.amazonaws.com)
 - **Repository:** youtrack
-- **Current Version:** 2026.1.12458
+- **Tag:** `:latest` (check ECR console for current deployed version)
 - **Data Location:** /var/youtrack-data on 30GB root volume
 - **Network:** Private IP only, port 8080
 - **Access Method:** SSM Session Manager (no SSH)

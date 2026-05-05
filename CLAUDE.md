@@ -92,7 +92,7 @@ docker tag jetbrains/youtrack:2026.1.12458 \
 docker push 640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:2026.1.12458
 ```
 
-**IMPORTANT**: Image push is one-time, NOT part of CDK deployment. Update image in ECR first, then update version in `lib/youtrack-stack.ts`, commit the change, and deploy manually using `cdk deploy YouTrackStack-Local`.
+**IMPORTANT**: Image push is one-time, NOT part of CDK deployment. After pushing the new image to ECR and retagging it as `:latest`, the next `cdk deploy YouTrackStack` will pull the updated image. No code changes required.
 
 ### Accessing Running Instance
 
@@ -184,7 +184,7 @@ The infrastructure follows the One.Cloud account-setup pattern with compliant bo
 **Image Location:**
 - Registry: `640664844884.dkr.ecr.eu-west-1.amazonaws.com`
 - Repository: `youtrack`
-- Current Version: `2026.1.12458`
+- Tag: `:latest` (deployed version determined by ECR image tag, not code version)
 
 ### Deprecated Code
 
