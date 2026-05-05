@@ -57,6 +57,108 @@ for tags, pushed, digest in data:
   echo ""
 }
 
+# Returns instance ID from CloudFormation stack outputs.
+get_instance_id() {
+  aws cloudformation describe-stacks \
+    --stack-name "${STACK_NAME}" \
+    --region "${REGION}" \
+    --query 'Stacks[0].Outputs[?OutputKey==`InstanceId`].OutputValue' \
+    --output text
+}
+
+# Exits with instructions if the instance is not in 'running' state.
+check_instance_running() {
+  local instance_id="$1"
+  local state
+  state=$(aws ec2 describe-instances \
+    --instance-ids "${instance_id}" \
+    --region "${REGION}" \
+    --query 'Reservations[0].Instances[0].State.Name' \
+    --output text)
+
+  if [[ "$state" != "running" ]]; then
+    echo "❌ Instance ${instance_id} is not running (state: ${state})."
+    echo ""
+    echo "   Start it first:"
+    echo "   aws ec2 start-instances --instance-ids ${instance_id} --region ${REGION}"
+    echo ""
+    echo "   Then re-run this script once it's running."
+    exit 1
+  fi
+}
+
+# Sends docker restart commands to EC2 via SSM and polls until complete.
+restart_container_on_ec2() {
+  local instance_id="$1"
+  echo "🔄 Sending restart command to ${instance_id} via SSM..."
+
+  local command_id
+  command_id=$(aws ssm send-command \
+    --instance-ids "${instance_id}" \
+    --document-name "AWS-RunShellScript" \
+    --region "${REGION}" \
+    --parameters 'commands=[
+      "aws ecr get-login-password --region eu-west-1 | docker login --username AWS --password-stdin 640664844884.dkr.ecr.eu-west-1.amazonaws.com",
+      "docker pull 640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:latest",
+      "docker stop youtrack && docker rm youtrack",
+      "docker run -d --name youtrack --restart=always -p 8080:8080 -v /var/youtrack-data/data:/opt/youtrack/data -v /var/youtrack-data/conf:/opt/youtrack/conf -v /var/youtrack-data/logs:/opt/youtrack/logs -v /var/youtrack-data/backups:/opt/youtrack/backups 640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:latest",
+      "docker ps --filter name=youtrack --format \"Running: {{.Image}} ({{.Status}})\""
+    ]' \
+    --query 'Command.CommandId' \
+    --output text)
+
+  echo "  Command ID: ${command_id}"
+  echo "  Polling..."
+
+  local status="Pending"
+  local attempts=0
+  while [[ "$status" == "InProgress" || "$status" == "Pending" ]]; do
+    sleep 5
+    status=$(aws ssm get-command-invocation \
+      --command-id "${command_id}" \
+      --instance-id "${instance_id}" \
+      --region "${REGION}" \
+      --query 'Status' \
+      --output text 2>/dev/null || echo "Pending")
+    attempts=$((attempts + 1))
+    if [[ $attempts -gt 60 ]]; then
+      echo "❌ Timed out waiting for SSM command (5 min limit)."
+      exit 1
+    fi
+  done
+
+  local stdout stderr
+  stdout=$(aws ssm get-command-invocation \
+    --command-id "${command_id}" \
+    --instance-id "${instance_id}" \
+    --region "${REGION}" \
+    --query 'StandardOutputContent' \
+    --output text)
+  stderr=$(aws ssm get-command-invocation \
+    --command-id "${command_id}" \
+    --instance-id "${instance_id}" \
+    --region "${REGION}" \
+    --query 'StandardErrorContent' \
+    --output text)
+
+  echo ""
+  echo "  Remote stdout:"
+  echo "$stdout" | sed 's/^/    /'
+  if [[ -n "$stderr" && "$stderr" != "None" ]]; then
+    echo "  Remote stderr:"
+    echo "$stderr" | sed 's/^/    /'
+  fi
+
+  if [[ "$status" == "Success" ]]; then
+    echo ""
+    echo "✅ Container restarted on ${instance_id}"
+  else
+    echo ""
+    echo "❌ SSM command failed (status: ${status})"
+    exit 1
+  fi
+}
+
 usage() {
   echo "Usage:"
   echo "  $0 --check-only     Show current ECR state, make no changes"
@@ -86,4 +188,11 @@ if [[ "$CHECK_ONLY" == "true" ]]; then
   exit 0
 fi
 
-echo "▶ Version: ${VERSION}"
+INSTANCE_ID=$(get_instance_id)
+if [[ -z "$INSTANCE_ID" || "$INSTANCE_ID" == "None" ]]; then
+  echo "❌ Could not resolve instance ID from stack '${STACK_NAME}'. Is the stack deployed?"
+  exit 1
+fi
+echo "🖥️  Instance: ${INSTANCE_ID}"
+check_instance_running "${INSTANCE_ID}"
+echo "▶ Version to deploy: ${VERSION}"
