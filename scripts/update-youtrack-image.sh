@@ -31,20 +31,23 @@ data = json.load(sys.stdin)
 data.sort(key=lambda x: x[1], reverse=True)
 print("  {:<25} {:<28} {}".format("TAG", "PUSHED AT", "DIGEST (short)"))
 for tags, pushed, digest in data:
+    pushed = pushed[:19]
     version_tags = [t for t in tags if t != "latest"]
     if not version_tags:
         continue
     tag = ", ".join(version_tags)
-    short = digest[7:19]
+    short = digest.split(":", 1)[1][:12] if ":" in digest else digest[:12]
     marker = "  <- latest" if digest == latest_digest else ""
     print("  {:<25} {:<28} {}{}".format(tag, pushed, short, marker))
 '
 
-  aws ecr describe-images \
+  if ! aws ecr describe-images \
     --repository-name "${ECR_REPO}" \
     --region "${REGION}" \
     --query 'imageDetails[?imageTags != `null`].[imageTags, imagePushedAt, imageDigest]' \
-    --output json | python3 -c "$py_script" "${latest_digest}"
+    --output json | python3 -c "$py_script" "${latest_digest}"; then
+    echo "  ⚠️  Could not list images (check: aws CLI output, python3 installed?)"
+  fi
 
   if [[ -n "$latest_digest" ]]; then
     echo ""
