@@ -93,10 +93,10 @@ get_dockerhub_latest() {
     return 1
   fi
 
-  # Query Docker Hub API
+  # Query Docker Hub API (fetch more results to find latest production tag)
   local response
   response=$(curl -s --max-time 10 \
-    "https://hub.docker.com/v2/repositories/jetbrains/youtrack/tags?page_size=100&ordering=-last_updated" \
+    "https://hub.docker.com/v2/repositories/jetbrains/youtrack/tags?page_size=100" \
     2>/dev/null)
 
   if [[ -z "$response" ]]; then
@@ -104,11 +104,11 @@ get_dockerhub_latest() {
     return 1
   fi
 
-  # Parse response with jq
+  # Parse response with jq - filter for production tags (YYYY.M.BUILD format) and sort by name
   local latest_tag latest_digest latest_date
-  latest_tag=$(echo "$response" | jq -r '.results[0].name' 2>/dev/null)
-  latest_digest=$(echo "$response" | jq -r '.results[0].digest' 2>/dev/null)
-  latest_date=$(echo "$response" | jq -r '.results[0].last_updated' 2>/dev/null)
+  latest_tag=$(echo "$response" | jq -r '[.results[] | select(.name | test("^20[0-9]{2}\\.[0-9]+\\.[0-9]+$"))] | sort_by(.name) | last | .name' 2>/dev/null)
+  latest_digest=$(echo "$response" | jq -r '[.results[] | select(.name | test("^20[0-9]{2}\\.[0-9]+\\.[0-9]+$"))] | sort_by(.name) | last | .digest' 2>/dev/null)
+  latest_date=$(echo "$response" | jq -r '[.results[] | select(.name | test("^20[0-9]{2}\\.[0-9]+\\.[0-9]+$"))] | sort_by(.name) | last | .last_updated' 2>/dev/null)
 
   if [[ -z "$latest_tag" || "$latest_tag" == "null" ]]; then
     echo "  ⚠️  Could not parse Docker Hub response"
