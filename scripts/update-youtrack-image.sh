@@ -159,6 +159,79 @@ restart_container_on_ec2() {
   fi
 }
 
+# Returns the ECR image digest for a given tag, or empty string if tag not found.
+get_ecr_digest() {
+  local tag="$1"
+  local digest
+  digest=$(aws ecr describe-images \
+    --repository-name "${ECR_REPO}" \
+    --region "${REGION}" \
+    --image-ids imageTag="${tag}" \
+    --query 'imageDetails[0].imageDigest' \
+    --output text 2>/dev/null || true)
+  [[ "$digest" == "None" || -z "$digest" ]] && echo "" || echo "$digest"
+}
+
+# Verifies Docker daemon is running locally.
+check_docker() {
+  if ! docker info > /dev/null 2>&1; then
+    echo "❌ Docker is not running. Start Docker Desktop and retry."
+    exit 1
+  fi
+}
+
+# Pulls VERSION from Docker Hub, pushes to ECR with version tag and as 'latest'.
+pull_and_push_to_ecr() {
+  local version="$1"
+  check_docker
+
+  echo "📥 Pulling jetbrains/youtrack:${version} from Docker Hub..."
+  if ! docker pull "jetbrains/youtrack:${version}"; then
+    echo "❌ Docker pull failed."
+    echo "   If on the corporate network, try from a machine not behind Zscaler,"
+    echo "   or configure a proxy bypass for registry-1.docker.io."
+    exit 1
+  fi
+
+  echo "🔑 Logging in to ECR..."
+  aws ecr get-login-password --region "${REGION}" | \
+    docker login --username AWS --password-stdin "${ECR_REGISTRY}"
+
+  echo "🏷️  Tagging for ECR..."
+  docker tag "jetbrains/youtrack:${version}" "${ECR_REGISTRY}/${ECR_REPO}:${version}"
+  docker tag "jetbrains/youtrack:${version}" "${ECR_REGISTRY}/${ECR_REPO}:latest"
+
+  echo "📤 Pushing ${ECR_REGISTRY}/${ECR_REPO}:${version}..."
+  docker push "${ECR_REGISTRY}/${ECR_REPO}:${version}"
+
+  echo "📤 Pushing ${ECR_REGISTRY}/${ECR_REPO}:latest..."
+  docker push "${ECR_REGISTRY}/${ECR_REPO}:latest"
+
+  echo "✅ Pushed ${version} and updated latest."
+}
+
+# Retags an existing ECR image as 'latest' using the ECR API (no Docker pull needed).
+retag_as_latest_in_ecr() {
+  local version="$1"
+  echo "🏷️  Retagging ${version} as latest in ECR (via ECR API, no Docker pull needed)..."
+
+  local manifest
+  manifest=$(aws ecr batch-get-image \
+    --repository-name "${ECR_REPO}" \
+    --region "${REGION}" \
+    --image-ids imageTag="${version}" \
+    --query 'images[0].imageManifest' \
+    --output text)
+
+  aws ecr put-image \
+    --repository-name "${ECR_REPO}" \
+    --region "${REGION}" \
+    --image-tag latest \
+    --image-manifest "${manifest}" > /dev/null
+
+  echo "✅ Retagged ${version} as latest."
+}
+
 usage() {
   echo "Usage:"
   echo "  $0 --check-only     Show current ECR state, make no changes"
@@ -195,4 +268,30 @@ if [[ -z "$INSTANCE_ID" || "$INSTANCE_ID" == "None" ]]; then
 fi
 echo "🖥️  Instance: ${INSTANCE_ID}"
 check_instance_running "${INSTANCE_ID}"
-echo "▶ Version to deploy: ${VERSION}"
+echo ""
+echo "🔍 Checking if ${VERSION} already exists in ECR..."
+VERSION_DIGEST=$(get_ecr_digest "${VERSION}")
+LATEST_DIGEST=$(get_ecr_digest "latest")
+
+if [[ -n "$VERSION_DIGEST" && "$VERSION_DIGEST" == "$LATEST_DIGEST" ]]; then
+  echo "ℹ️  ${VERSION} is already in ECR and is already tagged as latest."
+  echo ""
+  read -r -p "   Restart container on EC2 anyway? (y/N) " reply
+  if [[ ! "$reply" =~ ^[Yy]$ ]]; then
+    echo "Nothing to do. Exiting."
+    exit 0
+  fi
+elif [[ -n "$VERSION_DIGEST" && "$VERSION_DIGEST" != "$LATEST_DIGEST" ]]; then
+  echo "ℹ️  ${VERSION} is in ECR but not tagged as latest. Retagging via ECR API..."
+  retag_as_latest_in_ecr "${VERSION}"
+else
+  echo "  ${VERSION} not found in ECR. Pulling from Docker Hub..."
+  pull_and_push_to_ecr "${VERSION}"
+fi
+
+echo ""
+restart_container_on_ec2 "${INSTANCE_ID}"
+
+echo ""
+show_ecr_state
+echo "🎉 Done. YouTrack is now running ${VERSION}."
