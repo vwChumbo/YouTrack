@@ -97,13 +97,13 @@ restart_container_on_ec2() {
     --instance-ids "${instance_id}" \
     --document-name "AWS-RunShellScript" \
     --region "${REGION}" \
-    --parameters 'commands=[
-      "aws ecr get-login-password --region eu-west-1 | docker login --username AWS --password-stdin 640664844884.dkr.ecr.eu-west-1.amazonaws.com",
-      "docker pull 640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:latest",
-      "docker stop youtrack && docker rm youtrack",
-      "docker run -d --name youtrack --restart=always -p 8080:8080 -v /var/youtrack-data/data:/opt/youtrack/data -v /var/youtrack-data/conf:/opt/youtrack/conf -v /var/youtrack-data/logs:/opt/youtrack/logs -v /var/youtrack-data/backups:/opt/youtrack/backups 640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:latest",
-      "docker ps --filter name=youtrack --format \"Running: {{.Image}} ({{.Status}})\""
-    ]' \
+    --parameters "commands=[
+      \"aws ecr get-login-password --region ${REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}\",
+      \"docker pull ${ECR_REGISTRY}/${ECR_REPO}:latest\",
+      \"docker stop ${CONTAINER_NAME} 2>/dev/null || true; docker rm ${CONTAINER_NAME} 2>/dev/null || true\",
+      \"docker run -d --name ${CONTAINER_NAME} --restart=always -p 8080:8080 -v /var/youtrack-data/data:/opt/youtrack/data -v /var/youtrack-data/conf:/opt/youtrack/conf -v /var/youtrack-data/logs:/opt/youtrack/logs -v /var/youtrack-data/backups:/opt/youtrack/backups ${ECR_REGISTRY}/${ECR_REPO}:latest\",
+      \"docker ps --filter name=${CONTAINER_NAME} --format 'Running: {{.Image}} ({{.Status}})'\"
+    ]" \
     --query 'Command.CommandId' \
     --output text)
 
