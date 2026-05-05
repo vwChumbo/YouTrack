@@ -105,10 +105,12 @@ get_dockerhub_latest() {
   fi
 
   # Parse response with jq - filter for production tags (YYYY.M.BUILD format) and sort by name
+  # Single jq call returns pipe-delimited: name|digest|date
+  local latest_info
+  latest_info=$(echo "$response" | jq -r '[.results[] | select(.name | test("^20[0-9]{2}\\.[0-9]+\\.[0-9]+$"))] | sort_by(.name) | last | "\(.name)|\(.digest)|\(.last_updated)"' 2>/dev/null)
+
   local latest_tag latest_digest latest_date
-  latest_tag=$(echo "$response" | jq -r '[.results[] | select(.name | test("^20[0-9]{2}\\.[0-9]+\\.[0-9]+$"))] | sort_by(.name) | last | .name' 2>/dev/null)
-  latest_digest=$(echo "$response" | jq -r '[.results[] | select(.name | test("^20[0-9]{2}\\.[0-9]+\\.[0-9]+$"))] | sort_by(.name) | last | .digest' 2>/dev/null)
-  latest_date=$(echo "$response" | jq -r '[.results[] | select(.name | test("^20[0-9]{2}\\.[0-9]+\\.[0-9]+$"))] | sort_by(.name) | last | .last_updated' 2>/dev/null)
+  IFS='|' read -r latest_tag latest_digest latest_date <<< "$latest_info"
 
   if [[ -z "$latest_tag" || "$latest_tag" == "null" ]]; then
     echo "  ⚠️  Could not parse Docker Hub response"
