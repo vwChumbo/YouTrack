@@ -1,64 +1,33 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
-# Usage: ./scripts/update-youtrack-image.sh [VERSION]
-# Example: ./scripts/update-youtrack-image.sh 2024.4
-
-VERSION=${1:-2024.3}
 ECR_REGISTRY="640664844884.dkr.ecr.eu-west-1.amazonaws.com"
 ECR_REPO="youtrack"
-IMAGE_TAG="${VERSION}"
+REGION="eu-west-1"
+STACK_NAME="YouTrackStack"
+CONTAINER_NAME="youtrack"
 
-echo "🔄 Updating YouTrack image in ECR to version ${VERSION}"
-
-# Check if Docker is running
-if ! docker info > /dev/null 2>&1; then
-  echo "❌ Error: Docker is not running"
+usage() {
+  echo "Usage:"
+  echo "  $0 --check-only     Show current ECR state, make no changes"
+  echo "  $0 <VERSION>        Update YouTrack to VERSION (e.g. 2026.1.13000)"
   exit 1
+}
+
+if [[ $# -eq 0 ]]; then
+  usage
 fi
 
-# Pull new version from Docker Hub
-echo "📥 Pulling jetbrains/youtrack:${VERSION} from Docker Hub..."
-docker pull jetbrains/youtrack:${VERSION}
+CHECK_ONLY=false
+VERSION=""
 
-# Login to ECR
-echo "🔑 Logging in to ECR..."
-aws ecr get-login-password --region eu-west-1 | \
-  docker login --username AWS --password-stdin ${ECR_REGISTRY}
-
-# Tag for ECR
-echo "🏷️  Tagging image for ECR..."
-docker tag jetbrains/youtrack:${VERSION} ${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}
-
-# Check if this is the latest version being pushed
-read -p "Is this the latest version? Tag as 'latest' too? (y/n) " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-  docker tag jetbrains/youtrack:${VERSION} ${ECR_REGISTRY}/${ECR_REPO}:latest
-  echo "📤 Pushing ${ECR_REGISTRY}/${ECR_REPO}:latest..."
-  docker push ${ECR_REGISTRY}/${ECR_REPO}:latest
+if [[ "$1" == "--check-only" ]]; then
+  CHECK_ONLY=true
+elif [[ "$1" == --* ]]; then
+  echo "❌ Unknown flag: $1"
+  usage
+else
+  VERSION="$1"
 fi
 
-# Push to ECR
-echo "📤 Pushing ${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG} to ECR..."
-docker push ${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}
-
-# Verify upload
-echo "✅ Verifying upload..."
-aws ecr describe-images \
-  --repository-name ${ECR_REPO} \
-  --region eu-west-1 \
-  --image-ids imageTag=${IMAGE_TAG} \
-  --query 'imageDetails[0].[imageTags[0],imageSizeInBytes,imagePushedAt]' \
-  --output table
-
-echo ""
-echo "✅ YouTrack ${VERSION} successfully pushed to ECR!"
-echo ""
-echo "📝 To update the running instance:"
-echo "   1. SSH via SSM: aws ssm start-session --target <instance-id> --region eu-west-1"
-echo "   2. Stop container: docker stop youtrack && docker rm youtrack"
-echo "   3. Pull new image: docker pull ${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}"
-echo "   4. Start container: docker run -d --name youtrack --restart=always -p 8080:8080 -v /var/youtrack-data:/opt/youtrack/data ${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}"
-echo ""
-echo "Or redeploy the stack after updating the image tag in lib/youtrack-stack.ts"
+echo "✅ Parsed: CHECK_ONLY=${CHECK_ONLY} VERSION=${VERSION}"
