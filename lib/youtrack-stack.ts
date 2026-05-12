@@ -3,6 +3,7 @@ import { Construct } from 'constructs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as events from 'aws-cdk-lib/aws-events';
 import { SharedVpc, KeyStack, KeyPurpose } from '@vwg-community/vws-cdk';
 
 export interface YouTrackStackProps extends cdk.StackProps {
@@ -34,6 +35,37 @@ export class YouTrackStack extends cdk.Stack {
       logGroupName: '/aws/ssm/YouTrack',
       encryptionKey: appKey,
       retention: logs.RetentionDays.ONE_YEAR,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    // CloudWatch log groups for instance observability
+    // All encrypted with customer-managed KMS key (One.Cloud: no AWS-managed keys)
+    // All removalPolicy: RETAIN — preserves logs if stack is updated or destroyed
+    const cloudInitLogGroup = new logs.LogGroup(this, 'CloudInitLogs', {
+      logGroupName: '/aws/ec2/youtrack/cloud-init',
+      encryptionKey: appKey,
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    const systemLogGroup = new logs.LogGroup(this, 'SystemLogs', {
+      logGroupName: '/aws/ec2/youtrack/system',
+      encryptionKey: appKey,
+      retention: logs.RetentionDays.THREE_MONTHS,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    const containerLogGroup = new logs.LogGroup(this, 'ContainerLogs', {
+      logGroupName: '/aws/ec2/youtrack/container',
+      encryptionKey: appKey,
+      retention: logs.RetentionDays.THREE_MONTHS,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    const stateChangeLogGroup = new logs.LogGroup(this, 'StateChangeLogs', {
+      logGroupName: '/aws/ec2/youtrack/state-changes',
+      encryptionKey: appKey,
+      retention: logs.RetentionDays.SIX_MONTHS,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
@@ -92,10 +124,31 @@ export class YouTrackStack extends cdk.Stack {
       resources: [ssmLogGroup.logGroupArn],
     }));
 
+    // CW Agent + Docker awslogs driver: write access to all 4 observability log groups
+    instanceRole.addToPolicy(new iam.PolicyStatement({
+      actions: [
+        'logs:CreateLogStream',
+        'logs:PutLogEvents',
+        'logs:DescribeLogStreams',
+      ],
+      resources: [
+        cloudInitLogGroup.logGroupArn,
+        systemLogGroup.logGroupArn,
+        containerLogGroup.logGroupArn,
+        stateChangeLogGroup.logGroupArn,
+      ],
+    }));
+
+    // CW Agent metrics — resource '*' is an AWS requirement, cannot be scoped further
+    instanceRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['cloudwatch:PutMetricData'],
+      resources: ['*'],
+    }));
+
     // Grant instance role permission to use logs KMS key
     appKey.grantEncryptDecrypt(instanceRole);
 
-    // UserData script to install Docker and run YouTrack
+    // UserData script to install Docker, run YouTrack, and configure CloudWatch Agent
     const userData = ec2.UserData.forLinux();
     userData.addCommands(
       '#!/bin/bash',
@@ -109,14 +162,12 @@ export class YouTrackStack extends cdk.Stack {
       'usermod -aG docker ec2-user',
       '',
       '# Configure EBS data volume',
-      '# Wait for device to be available',
       'for i in {1..30}; do',
       '  if [ -e /dev/sdf ]; then break; fi',
       '  echo "Waiting for /dev/sdf to be available..."',
       '  sleep 1',
       'done',
       '',
-      '# Check if volume is already formatted (has a filesystem)',
       'if ! blkid /dev/sdf; then',
       '  echo "Formatting /dev/sdf as ext4"',
       '  mkfs -t ext4 /dev/sdf',
@@ -124,21 +175,17 @@ export class YouTrackStack extends cdk.Stack {
       '  echo "/dev/sdf already formatted, skipping format"',
       'fi',
       '',
-      '# Create mount point',
       'mkdir -p /var/youtrack-data',
       '',
-      '# Add to fstab if not already present',
       'if ! grep -q "/dev/sdf" /etc/fstab; then',
       '  echo "/dev/sdf /var/youtrack-data ext4 defaults,nofail 0 2" >> /etc/fstab',
       'fi',
       '',
-      '# Mount the volume',
       'mount -a',
       '',
-      '# Create subdirectories for all 4 YouTrack volumes',
       'mkdir -p /var/youtrack-data/{data,conf,logs,backups}',
       '',
-      '# Set ownership and permissions for YouTrack container (UID 13001)',
+      '# Set ownership and permissions for YouTrack container (UID/GID 13001)',
       'chown -R 13001:13001 /var/youtrack-data',
       'chmod -R 755 /var/youtrack-data',
       '',
@@ -147,8 +194,12 @@ export class YouTrackStack extends cdk.Stack {
       '  docker login --username AWS --password-stdin \\',
       '  640664844884.dkr.ecr.eu-west-1.amazonaws.com',
       '',
-      '# Run YouTrack container from ECR with all 4 volume mounts',
+      '# Run YouTrack container with CloudWatch log driver',
       'docker run -d --name youtrack --restart=always \\',
+      '  --log-driver=awslogs \\',
+      '  --log-opt awslogs-region=eu-west-1 \\',
+      '  --log-opt awslogs-group=/aws/ec2/youtrack/container \\',
+      '  --log-opt awslogs-stream=youtrack \\',
       '  -p 8080:8080 \\',
       '  -v /var/youtrack-data/data:/opt/youtrack/data \\',
       '  -v /var/youtrack-data/conf:/opt/youtrack/conf \\',
@@ -156,13 +207,41 @@ export class YouTrackStack extends cdk.Stack {
       '  -v /var/youtrack-data/backups:/opt/youtrack/backups \\',
       '  640664844884.dkr.ecr.eu-west-1.amazonaws.com/youtrack:latest',
       '',
-      '# Setup YouTrack internal backup cron job (daily at 2AM UTC)',
-      'cat > /etc/cron.d/youtrack-backup << EOF',
+      '# Internal backup cron job (daily 2AM UTC)',
+      "cat > /etc/cron.d/youtrack-backup << 'EOF'",
       '0 2 * * * root docker exec youtrack java -jar /opt/youtrack/lib/hub.jar backup',
       'EOF',
       'chmod 0644 /etc/cron.d/youtrack-backup',
       '',
-      '# Signal completion',
+      '# Install and configure CloudWatch Agent',
+      'yum install -y amazon-cloudwatch-agent',
+      "cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'CWEOF'",
+      '{',
+      '  "logs": {',
+      '    "logs_collected": {',
+      '      "files": {',
+      '        "collect_list": [',
+      '          {',
+      '            "file_path": "/var/log/cloud-init-output.log",',
+      '            "log_group_name": "/aws/ec2/youtrack/cloud-init",',
+      '            "log_stream_name": "{instance_id}",',
+      '            "timezone": "UTC"',
+      '          },',
+      '          {',
+      '            "file_path": "/var/log/messages",',
+      '            "log_group_name": "/aws/ec2/youtrack/system",',
+      '            "log_stream_name": "{instance_id}",',
+      '            "timezone": "UTC"',
+      '          }',
+      '        ]',
+      '      }',
+      '    }',
+      '  }',
+      '}',
+      'CWEOF',
+      'systemctl enable amazon-cloudwatch-agent',
+      'systemctl start amazon-cloudwatch-agent',
+      '',
       'echo "YouTrack deployment complete at $(date)" > /var/log/youtrack-setup.log'
     );
 
@@ -226,6 +305,51 @@ export class YouTrackStack extends cdk.Stack {
       volumeId: dataVolume.volumeId,
       instanceId: this.instance.instanceId,
       device: '/dev/sdf',
+    });
+
+    // Resource policy: allow EventBridge to write state-change events to CloudWatch Logs.
+    // CfnResourcePolicy (L1) is used directly — the L2 CloudWatchLogGroup events target
+    // creates a Lambda-backed Custom Resource which is blocked by the One.Cloud Lambda SCP.
+    new logs.CfnResourcePolicy(this, 'EventBridgeLogGroupPolicy', {
+      policyName: 'YouTrackEventBridgeToCloudWatchLogs',
+      policyDocument: JSON.stringify({
+        Version: '2012-10-17',
+        Statement: [
+          {
+            Effect: 'Allow',
+            Principal: { Service: 'events.amazonaws.com' },
+            Action: ['logs:CreateLogStream', 'logs:PutLogEvents'],
+            Resource: `${stateChangeLogGroup.logGroupArn}:*`,
+            Condition: {
+              ArnEquals: {
+                'aws:SourceArn': `arn:aws:events:${this.region}:${this.account}:rule/*`,
+              },
+            },
+          },
+        ],
+      }),
+    });
+
+    // EventBridge rule: capture every EC2 state change for this instance.
+    // Healthy morning: stopped → pending → running
+    // Failed morning:  pending → stopped  (no 'running' = immediate failure signal in CloudWatch)
+    // CfnRule (L1) targets the log group ARN directly — no Lambda Custom Resource needed.
+    new events.CfnRule(this, 'InstanceStateChangeRule', {
+      description: 'Log EC2 state changes for YouTrack instance to CloudWatch',
+      state: 'ENABLED',
+      eventPattern: {
+        source: ['aws.ec2'],
+        'detail-type': ['EC2 Instance State-change Notification'],
+        detail: {
+          'instance-id': [this.instance.instanceId],
+        },
+      },
+      targets: [
+        {
+          id: 'CloudWatchLogsTarget',
+          arn: stateChangeLogGroup.logGroupArn,
+        },
+      ],
     });
 
     // Outputs
