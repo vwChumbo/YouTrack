@@ -202,12 +202,17 @@ Old test code from initial CDK exploration is preserved in `deprecated/cdk-test/
 **Purpose:** Cost optimization - instance only runs during business hours
 
 **Schedule:**
-- **Start**: Monday-Friday at 07:00 UTC (7 AM WET / 8 AM WEST)
-- **Stop**: Monday-Friday at 19:00 UTC (7 PM WET / 8 PM WEST)
+- **Start**: Monday-Friday at 06:00 UTC (primary) + 06:30 UTC (backup/retry)
+  - Winter (WET, UTC+0): 06:00 = 2h before 8am work start
+  - Summer (WEST, UTC+1): 07:00 = 1h before 8am work start
+- **Stop**: Monday-Friday at 19:00 UTC
+  - Winter (WET, UTC+0): 19:00 = 2h after 17:00 work end
+  - Summer (WEST, UTC+1): 20:00 = 3h after 17:00 work end
 
-**Note:** Uses fixed UTC times. Approximately 1 hour shift during DST transitions (WET/WEST) is acceptable for dev environment.
+**Note:** 06:00 UTC guarantees at least 1h buffer before work regardless of DST.
+The backup schedule at 06:30 UTC is a safety net — `StartInstances` is idempotent (no-op if already running).
 
-**Cost Impact:** Approximately 75% reduction in EC2 costs (12 hrs/day x 5 days/week vs 24/7)
+**Cost Impact:** Approximately 75% reduction in EC2 costs (13 hrs/day x 5 days/week vs 24/7)
 
 **Manual Override:**
 ```bash
@@ -489,9 +494,9 @@ All One.Cloud compliance findings have been resolved by adopting the account-set
 - Encryption: Customer-managed KMS key
 
 **Instance Availability:**
-- **Business Hours**: Monday-Friday 07:00-19:00 UTC (instance running)
-  - Winter (WET): 7AM-7PM Lisbon time
-  - Summer (WEST): 8AM-8PM Lisbon time (1 hour shift)
+- **Business Hours**: Monday-Friday 06:00-19:00 UTC (instance running)
+  - Winter (WET): 6AM-7PM Lisbon time
+  - Summer (WEST): 7AM-8PM Lisbon time
 - **Off Hours**: Instance automatically stopped (use manual start if needed)
 
 **Costs:**

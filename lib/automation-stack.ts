@@ -61,11 +61,37 @@ export class AutomationStack extends cdk.Stack {
       },
     }));
 
-    // Start schedule: Monday-Friday at 07:00 UTC (7 AM WET / 8 AM WEST)
+    // Start schedule: Monday-Friday at 06:00 UTC
+    // 06:00 UTC = 06:00 WET (winter, UTC+0) = 2h before 8am work start
+    // 06:00 UTC = 07:00 WEST (summer, UTC+1) = 1h before 8am work start
+    // Using 06:00 UTC ensures at least 1h buffer regardless of DST
     const startSchedule = new scheduler.CfnSchedule(this, 'YouTrackStartSchedule', {
       name: 'youtrack-start-schedule',
-      description: 'Start YouTrack EC2 instance Mon-Fri at 7 AM UTC',
-      scheduleExpression: 'cron(0 7 ? * MON-FRI *)',
+      description: 'Start YouTrack EC2 instance Mon-Fri at 06:00 UTC (1-2h before work)',
+      scheduleExpression: 'cron(0 6 ? * MON-FRI *)',
+      scheduleExpressionTimezone: 'UTC',
+      flexibleTimeWindow: {
+        mode: 'OFF',
+      },
+      target: {
+        arn: 'arn:aws:scheduler:::aws-sdk:ec2:startInstances',
+        roleArn: startRole.roleArn,
+        input: JSON.stringify({
+          InstanceIds: [instanceId],
+        }),
+        retryPolicy: {
+          maximumRetryAttempts: 3,
+          maximumEventAgeInSeconds: 300,
+        },
+      },
+    });
+
+    // Backup start schedule: 06:30 UTC — retries if primary failed
+    // StartInstances is idempotent: no-op if instance is already running
+    new scheduler.CfnSchedule(this, 'YouTrackStartScheduleBackup', {
+      name: 'youtrack-start-schedule-backup',
+      description: 'Backup start for YouTrack EC2 instance Mon-Fri at 06:30 UTC',
+      scheduleExpression: 'cron(30 6 ? * MON-FRI *)',
       scheduleExpressionTimezone: 'UTC',
       flexibleTimeWindow: {
         mode: 'OFF',
@@ -189,7 +215,7 @@ export class AutomationStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, 'ScheduleSummary', {
-      value: 'Mon-Fri: Start at 07:00 UTC, Stop at 19:00 UTC',
+      value: 'Mon-Fri: Start at 06:00 UTC (+ backup 06:30), Stop at 19:00 UTC',
       description: 'Schedule summary',
     });
 
