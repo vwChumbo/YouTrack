@@ -101,7 +101,7 @@ class ApplicationStage extends cdk.Stage {
     // Instantiate AutomationStack with instance ID from YouTrackStack
     new AutomationStack(this, 'AutomationStack', {
       env: props?.env,
-      // instanceId looked up at deploy time
+      instanceId: youTrackStack.instance.instanceId, // resolved at deploy time
     });
   }
 }
